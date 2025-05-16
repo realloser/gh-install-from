@@ -120,8 +120,8 @@ func (m *Manager) findBinaryByRepo(repo string) (string, *metadata.BinaryMetadat
 	return "", nil, fmt.Errorf("no binary found for repository %s", repo)
 }
 
-// Delete removes an installed binary and its metadata
-func (m *Manager) Delete(nameOrRepo string) error {
+// Remove removes an installed binary and its metadata
+func (m *Manager) Remove(nameOrRepo string) error {
 	var binaryName string
 	var meta *metadata.BinaryMetadata
 
@@ -147,27 +147,32 @@ func (m *Manager) Delete(nameOrRepo string) error {
 		meta, err = metadata.Load(binaryPath)
 		if err != nil {
 			log.Debug("failed to load metadata", "error", err)
-			// Continue with deletion even if metadata is missing
+			// Continue with removal even if metadata is missing
 		}
 	}
 
 	binaryPath := filepath.Join(m.binDir, binaryName)
 
-	// Delete the binary
+	// Remove the binary
 	if err := os.Remove(binaryPath); err != nil {
-		return fmt.Errorf("failed to delete binary: %w", err)
+		return fmt.Errorf("failed to remove binary: %w", err)
 	}
 
-	// Delete metadata if it exists
+	// Remove metadata if it exists
 	if meta != nil {
 		if err := metadata.Delete(binaryPath); err != nil {
-			log.Debug("failed to delete metadata", "error", err)
-			// Don't fail if metadata deletion fails
+			log.Debug("failed to remove metadata", "error", err)
+			// Don't fail if metadata removal fails
 		}
 	}
 
-	fmt.Println(ui.FormatActionMessage("Deleted", ui.FormatBinaryInfo(binaryName, binaryPath, meta.Version)))
+	fmt.Println(ui.FormatActionMessage("Removed", ui.FormatBinaryInfo(binaryName, binaryPath, meta.Version)))
 	return nil
+}
+
+// Delete is deprecated, use Remove instead
+func (m *Manager) Delete(nameOrRepo string) error {
+	return m.Remove(nameOrRepo)
 }
 
 // InstalledBinary represents an installed binary and its metadata
