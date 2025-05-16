@@ -1,6 +1,5 @@
 /*
 Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
@@ -10,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/realloser/gh-install-from/pkg/log"
+	"github.com/spf13/cobra"
 )
 
 // updateCmd represents the update command

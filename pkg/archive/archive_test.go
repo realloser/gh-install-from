@@ -14,73 +14,125 @@ import (
 func TestExtractFile(t *testing.T) {
 	tests := []struct {
 		name     string
-		setup    func(t *testing.T) string
-		destName string
+		setup    func(t *testing.T) (string, string)
 		wantErr  bool
+		cleanup  func(t *testing.T, src string)
+		validate func(t *testing.T, path string)
 	}{
 		{
 			name: "tar.gz file with binary",
-			setup: func(t *testing.T) string {
-				return createTestTarGz(t, "testbin", "#!/bin/sh\necho test")
+			setup: func(t *testing.T) (string, string) {
+				src := createTestTarGz(t, "testbin", "#!/bin/sh\necho test")
+				dst := filepath.Join(t.TempDir(), "extracted-bin")
+				return src, dst
 			},
-			destName: "extracted-bin",
-			wantErr:  false,
+			wantErr: false,
+			cleanup: func(t *testing.T, src string) {
+				os.Remove(src)
+			},
+			validate: func(t *testing.T, path string) {
+				// Verify file exists
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("ExtractFile() destination file not created: %v", err)
+				}
+
+				// Verify permissions
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Errorf("Failed to stat destination file: %v", err)
+				} else if info.Mode().Perm() != 0755 {
+					t.Errorf("Incorrect file permissions: got %v, want %v", info.Mode().Perm(), 0755)
+				}
+			},
 		},
 		{
 			name: "zip file with binary",
-			setup: func(t *testing.T) string {
-				return createTestZip(t, "testbin.exe", "test content")
+			setup: func(t *testing.T) (string, string) {
+				src := createTestZip(t, "testbin.exe", "test content")
+				dst := filepath.Join(t.TempDir(), "extracted-bin.exe")
+				return src, dst
 			},
-			destName: "extracted-bin.exe",
-			wantErr:  false,
+			wantErr: false,
+			cleanup: func(t *testing.T, src string) {
+				os.Remove(src)
+			},
+			validate: func(t *testing.T, path string) {
+				// Verify file exists
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("ExtractFile() destination file not created: %v", err)
+				}
+
+				// Verify permissions
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Errorf("Failed to stat destination file: %v", err)
+				} else if info.Mode().Perm() != 0755 {
+					t.Errorf("Incorrect file permissions: got %v, want %v", info.Mode().Perm(), 0755)
+				}
+			},
 		},
 		{
 			name: "simple binary file",
-			setup: func(t *testing.T) string {
-				return createTestFile(t, "test content")
+			setup: func(t *testing.T) (string, string) {
+				src := createTestFile(t, "test content")
+				dst := filepath.Join(t.TempDir(), "copied-bin")
+				return src, dst
 			},
-			destName: "copied-bin",
-			wantErr:  false,
+			wantErr: false,
+			cleanup: func(t *testing.T, src string) {
+				os.Remove(src)
+			},
+			validate: func(t *testing.T, path string) {
+				// Verify file exists
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("ExtractFile() destination file not created: %v", err)
+				}
+
+				// Verify permissions
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Errorf("Failed to stat destination file: %v", err)
+				} else if info.Mode().Perm() != 0755 {
+					t.Errorf("Incorrect file permissions: got %v, want %v", info.Mode().Perm(), 0755)
+				}
+			},
 		},
 		{
-			name: "invalid tar.gz file",
-			setup: func(t *testing.T) string {
-				return createTestFile(t, "invalid tar.gz content")
+			name: "invalid_tar.gz_file",
+			setup: func(t *testing.T) (string, string) {
+				src := filepath.Join(t.TempDir(), "invalid.tar.gz")
+				dst := filepath.Join(t.TempDir(), "output")
+				err := os.WriteFile(src, []byte("invalid tar.gz content"), 0644)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return src, dst
 			},
-			destName: "should-fail.tar.gz",
-			wantErr:  true,
+			wantErr: true,
+			cleanup: func(t *testing.T, src string) {
+				os.Remove(src)
+			},
+			validate: func(t *testing.T, path string) {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Error("expected output file to not exist")
+				}
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create source file
-			srcPath := tt.setup(t)
-			defer os.Remove(srcPath)
-
-			// Create destination path
-			destPath := filepath.Join(t.TempDir(), tt.destName)
+			srcPath, destPath := tt.setup(t)
+			defer tt.cleanup(t, srcPath)
 
 			// Test extraction
-			err := ExtractFile(srcPath, destPath)
-			if (err != nil) != tt.wantErr {
+			if err := ExtractFile(srcPath, destPath); (err != nil) != tt.wantErr {
 				t.Errorf("ExtractFile() error = %v, wantErr %v", err, tt.wantErr)
-				return
 			}
 
 			if !tt.wantErr {
-				// Verify file exists
-				if _, err := os.Stat(destPath); err != nil {
-					t.Errorf("ExtractFile() destination file not created: %v", err)
-				}
-
-				// Verify permissions
-				info, err := os.Stat(destPath)
-				if err != nil {
-					t.Errorf("Failed to stat destination file: %v", err)
-				} else if info.Mode().Perm() != 0755 {
-					t.Errorf("Incorrect file permissions: got %v, want %v", info.Mode().Perm(), 0755)
-				}
+				tt.validate(t, destPath)
 			}
 		})
 	}
@@ -200,4 +252,4 @@ func createTestFile(t *testing.T, content string) string {
 	}
 
 	return tmpfile.Name()
-} 
+}

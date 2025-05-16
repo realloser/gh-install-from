@@ -11,114 +11,121 @@ import (
 	"strings"
 )
 
-// ExtractFile extracts a binary from a compressed file
+// ExtractFile extracts a file from a compressed archive or copies a regular file
 func ExtractFile(src, dest string) error {
 	switch {
-	case strings.HasSuffix(src, ".tar.gz") || strings.HasSuffix(src, ".tgz"):
-		return extractTarGz(src, dest)
-	case strings.HasSuffix(src, ".zip"):
-		return extractZip(src, dest)
+	case isGzipFile(src):
+		return extractGzipFile(src, dest)
+	case isZipFile(src):
+		return extractZipFile(src, dest)
 	default:
-		// If not compressed, just copy the file
 		return copyFile(src, dest)
 	}
 }
 
-func extractTarGz(src, dest string) error {
+func extractGzipFile(src, dest string) error {
 	file, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed to open archive: %w", err)
+		return fmt.Errorf("failed to open gzip file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close file: %w", cerr)
+			}
+		}
+	}()
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gzr.Close()
+	defer func() {
+		if cerr := gzr.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close gzip reader: %w", cerr)
+			}
+		}
+	}()
 
 	tr := tar.NewReader(gzr)
-	var foundBinary bool
-
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
-			break
+			return fmt.Errorf("binary not found in archive")
 		}
 		if err != nil {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		// Skip directories and non-regular files
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		// Look for binary file (usually in bin/ directory or root)
-		if isBinaryFile(header.Name) {
+		if header.Typeflag == tar.TypeReg {
 			out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 			if err != nil {
 				return fmt.Errorf("failed to create destination file: %w", err)
 			}
-			defer out.Close()
+			defer func() {
+				if cerr := out.Close(); cerr != nil {
+					if err == nil {
+						err = fmt.Errorf("failed to close output file: %w", cerr)
+					}
+				}
+			}()
 
 			if _, err := io.Copy(out, tr); err != nil {
 				return fmt.Errorf("failed to extract file: %w", err)
 			}
-			foundBinary = true
-			break
+			return nil
 		}
 	}
-
-	if !foundBinary {
-		return fmt.Errorf("no binary found in archive")
-	}
-	return nil
 }
 
-func extractZip(src, dest string) error {
+func extractZipFile(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
-		return fmt.Errorf("failed to open zip: %w", err)
+		return fmt.Errorf("failed to open zip file: %w", err)
 	}
-	defer r.Close()
+	defer func() {
+		if cerr := r.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close zip reader: %w", cerr)
+			}
+		}
+	}()
 
-	var foundBinary bool
 	for _, f := range r.File {
-		// Skip directories and non-regular files
 		if f.FileInfo().IsDir() {
 			continue
 		}
 
-		// Look for binary file
-		if isBinaryFile(f.Name) {
-			rc, err := f.Open()
-			if err != nil {
-				return fmt.Errorf("failed to open file in zip: %w", err)
-			}
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("failed to open file in zip: %w", err)
+		}
 
-			out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-			if err != nil {
-				rc.Close()
-				return fmt.Errorf("failed to create destination file: %w", err)
-			}
+		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("failed to create destination file: %w", err)
+		}
 
-			_, err = io.Copy(out, rc)
+		_, err = io.Copy(out, rc)
+		if err != nil {
 			rc.Close()
 			out.Close()
-			if err != nil {
-				return fmt.Errorf("failed to extract file: %w", err)
-			}
-
-			foundBinary = true
-			break
+			return fmt.Errorf("failed to extract file: %w", err)
 		}
+
+		if err := rc.Close(); err != nil {
+			out.Close()
+			return fmt.Errorf("failed to close zip file: %w", err)
+		}
+		if err := out.Close(); err != nil {
+			return fmt.Errorf("failed to close output file: %w", err)
+		}
+		return nil
 	}
 
-	if !foundBinary {
-		return fmt.Errorf("no binary found in archive")
-	}
-	return nil
+	return fmt.Errorf("no files found in zip archive")
 }
 
 func copyFile(src, dest string) error {
@@ -126,16 +133,39 @@ func copyFile(src, dest string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer in.Close()
+	defer func() {
+		if cerr := in.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close input file: %w", cerr)
+			}
+		}
+	}()
 
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer out.Close()
+	defer func() {
+		if cerr := out.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("failed to close output file: %w", cerr)
+			}
+		}
+	}()
 
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	return nil
+}
+
+func isGzipFile(filename string) bool {
+	return filepath.Ext(filename) == ".gz" || filepath.Ext(filename) == ".tgz"
+}
+
+func isZipFile(filename string) bool {
+	return filepath.Ext(filename) == ".zip"
 }
 
 // isBinaryFile checks if the file path looks like a binary
@@ -159,4 +189,4 @@ func isBinaryFile(path string) bool {
 	}
 
 	return false
-} 
+}

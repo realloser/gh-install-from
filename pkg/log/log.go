@@ -66,4 +66,4 @@ func Warn(msg string, args ...any) {
 // Error logs at error level
 func Error(msg string, args ...any) {
 	Logger.Error(msg, args...)
-} 
+}

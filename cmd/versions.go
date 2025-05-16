@@ -1,6 +1,5 @@
 /*
 Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-
 */
 package cmd
 
@@ -10,8 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/go-gh"
-	"github.com/spf13/cobra"
 	"github.com/realloser/gh-install-from/pkg/log"
+	"github.com/spf13/cobra"
 )
 
 type releaseVersion struct {
@@ -63,7 +62,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 	}
 
 	var releases []struct {
-		TagName    string `json:"tag_name"`
+		TagName   string `json:"tag_name"`
 		CreatedAt string `json:"created_at"`
 	}
 

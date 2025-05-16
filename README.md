@@ -25,6 +25,12 @@ This tool helps you download and install binaries from GitHub releases. Please n
 - 🔒 Security scanning of gh-install-from itself
 - 🛠️ Parallel builds for faster releases
 - 📝 Detailed logging with verbose mode
+- 🔑 Uses GitHub CLI's authentication
+
+## Prerequisites
+
+- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
+- Go 1.21 or later (for development only)
 
 ## Installation
 

@@ -63,11 +63,6 @@ func TestInit(t *testing.T) {
 }
 
 func TestLogLevels(t *testing.T) {
-	// Capture log output
-	var buf bytes.Buffer
-	handler := slog.NewTextHandler(&buf, nil)
-	Logger = slog.New(handler)
-
 	tests := []struct {
 		name     string
 		logFunc  func(string, ...any)
@@ -78,29 +73,41 @@ func TestLogLevels(t *testing.T) {
 			name:     "info level",
 			logFunc:  Info,
 			message:  "info message",
-			wantText: "INFO info message",
+			wantText: "level=INFO msg=\"info message\"",
 		},
 		{
 			name:     "warn level",
 			logFunc:  Warn,
 			message:  "warn message",
-			wantText: "WARN warn message",
+			wantText: "level=WARN msg=\"warn message\"",
 		},
 		{
 			name:     "error level",
 			logFunc:  Error,
 			message:  "error message",
-			wantText: "ERROR error message",
+			wantText: "level=ERROR msg=\"error message\"",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			buf.Reset()
+			var buf bytes.Buffer
+			handler := slog.NewTextHandler(&buf, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+					// Skip time attribute to make tests deterministic
+					if a.Key == "time" {
+						return slog.Attr{}
+					}
+					return a
+				},
+			})
+			Logger = slog.New(handler)
+
 			tt.logFunc(tt.message)
 			if !strings.Contains(buf.String(), tt.wantText) {
 				t.Errorf("log output = %q, want to contain %q", buf.String(), tt.wantText)
 			}
 		})
 	}
-} 
+}
