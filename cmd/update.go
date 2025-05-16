@@ -1,51 +1,40 @@
+/*
+Copyright © 2025 NAME HERE <EMAIL ADDRESS>
+
+*/
 package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
+// updateCmd represents the update command
 var updateCmd = &cobra.Command{
-	Use:   "update [owner/repo]",
-	Short: "Update installed binaries",
-	Long: `Update installed binaries from GitHub releases.
-If no repository is specified, all installed binaries will be updated.`,
-	RunE: runUpdate,
+	Use:   "update",
+	Short: "A brief description of your command",
+	Long: `A longer description that spans multiple lines and likely contains examples
+and usage of using your command. For example:
+
+Cobra is a CLI library for Go that empowers applications.
+This application is a tool to generate the needed files
+to quickly create a Cobra application.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("update called")
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// updateCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// updateCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
-
-func runUpdate(cmd *cobra.Command, args []string) error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	installDir := filepath.Join(homeDir, ".local", "bin")
-	if len(args) == 0 {
-		// Update all installed binaries
-		entries, err := os.ReadDir(installDir)
-		if err != nil {
-			return fmt.Errorf("failed to read install directory: %w", err)
-		}
-
-		for _, entry := range entries {
-			if entry.Type()&os.ModeSymlink != 0 {
-				// TODO: Implement update logic for each binary
-				fmt.Printf("Updating %s...\n", entry.Name())
-			}
-		}
-	} else {
-		// Update specific binary
-		repo := args[0]
-		fmt.Printf("Updating %s...\n", repo)
-		// TODO: Implement update logic for specific binary
-	}
-
-	return nil
-} 

@@ -1,84 +1,40 @@
+/*
+Copyright © 2025 NAME HERE <EMAIL ADDRESS>
+
+*/
 package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 
-	"github.com/charmbracelet/bubbles/progress"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/cli/go-gh"
 	"github.com/spf13/cobra"
 )
 
+// installCmd represents the install command
 var installCmd = &cobra.Command{
-	Use:   "install [owner/repo]",
-	Short: "Install a binary from a GitHub repository",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runInstall,
+	Use:   "install",
+	Short: "A brief description of your command",
+	Long: `A longer description that spans multiple lines and likely contains examples
+and usage of using your command. For example:
+
+Cobra is a CLI library for Go that empowers applications.
+This application is a tool to generate the needed files
+to quickly create a Cobra application.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("install called")
+	},
 }
 
 func init() {
 	rootCmd.AddCommand(installCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// installCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// installCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
-
-func runInstall(cmd *cobra.Command, args []string) error {
-	repo := args[0]
-	client, err := gh.RESTClient(nil)
-	if err != nil {
-		return fmt.Errorf("failed to create GitHub client: %w", err)
-	}
-
-	// Get latest release
-	var release struct {
-		Assets []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
-
-	err = client.Get(fmt.Sprintf("repos/%s/releases/latest", repo), &release)
-	if err != nil {
-		return fmt.Errorf("failed to get latest release: %w", err)
-	}
-
-	// Find matching binary for current OS/Arch
-	osName := runtime.GOOS
-	archName := runtime.GOARCH
-	var matchingAsset struct {
-		Name string
-		URL  string
-	}
-
-	for _, asset := range release.Assets {
-		if matchBinary(asset.Name, osName, archName) {
-			matchingAsset.Name = asset.Name
-			matchingAsset.URL = asset.BrowserDownloadURL
-			break
-		}
-	}
-
-	if matchingAsset.URL == "" {
-		return fmt.Errorf("no matching binary found for %s/%s", osName, archName)
-	}
-
-	// Create installation directory
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	installDir := filepath.Join(homeDir, ".local", "bin")
-	if err := os.MkdirAll(installDir, 0755); err != nil {
-		return fmt.Errorf("failed to create install directory: %w", err)
-	}
-
-	// TODO: Implement download and installation with progress bar
-	return nil
-}
-
-func matchBinary(name, os, arch string) bool {
-	// TODO: Implement proper binary name matching
-	return true
-} 
