@@ -10,6 +10,25 @@
         "git": {
             "commitMessages": "Use conventional commits format: feat:, fix:, docs:, test:, refactor:",
             "branchNaming": "Use feature/, bugfix/, docs/, test/ prefixes for branches"
+        },
+        "workflow": {
+            "majorChanges": [
+                "All tasks must pass before committing",
+                "Changes must be covered with unit tests",
+                "Run make build && make lint && make test before commit",
+                "Commit only after successful validation"
+            ],
+            "commitSequence": [
+                "Write unit tests for changes",
+                "Implement changes",
+                "Run make build",
+                "Run make lint",
+                "Run make test",
+                "Review test coverage",
+                "Write documentation",
+                "Update README.md",
+                "Commit changes"
+            ]
         }
     },
     "fileTemplates": {
@@ -34,6 +53,10 @@
         "fix": {
             "command": "make fix",
             "description": "Fix common linting issues"
+        },
+        "validate": {
+            "command": "make build && make lint && make test",
+            "description": "Run all validation tasks before commit"
         }
     },
     "lintRules": {
