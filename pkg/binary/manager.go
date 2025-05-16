@@ -124,6 +124,52 @@ func (m *Manager) Delete(binaryName string) error {
 	return nil
 }
 
+// InstalledBinary represents an installed binary and its metadata
+type InstalledBinary struct {
+	Name       string
+	Path       string
+	Repository string
+	Version    string
+	Host       string
+}
+
+// ListInstalled returns a list of all installed binaries and their metadata
+func (m *Manager) ListInstalled() ([]InstalledBinary, error) {
+	entries, err := os.ReadDir(m.binDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bin directory: %w", err)
+	}
+
+	var binaries []InstalledBinary
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue // Skip directories
+		}
+
+		binaryPath := filepath.Join(m.binDir, entry.Name())
+		meta, err := metadata.Load(binaryPath)
+		if err != nil {
+			log.Debug("failed to load metadata for", entry.Name()+":", err)
+			// Include binary with minimal info if metadata is missing
+			binaries = append(binaries, InstalledBinary{
+				Name: entry.Name(),
+				Path: binaryPath,
+			})
+			continue
+		}
+
+		binaries = append(binaries, InstalledBinary{
+			Name:       entry.Name(),
+			Path:       binaryPath,
+			Repository: meta.Repository,
+			Version:    meta.Version,
+			Host:       meta.GHHost,
+		})
+	}
+
+	return binaries, nil
+}
+
 // GetBinaryPath returns the full path for a binary name
 func (m *Manager) GetBinaryPath(binaryName string) string {
 	return filepath.Join(m.binDir, binaryName)
