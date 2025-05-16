@@ -6,8 +6,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
-	"github.com/realloser/gh-install-from/pkg/installer"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/spf13/cobra"
 )
@@ -35,8 +35,12 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
-	installer := installer.New(client)
-	if err := installer.Install(repo); err != nil {
+	manager, err := binary.New(client)
+	if err != nil {
+		return fmt.Errorf("failed to create binary manager: %w", err)
+	}
+
+	if err := manager.Install(repo); err != nil {
 		return fmt.Errorf("failed to install binary: %w", err)
 	}
 
