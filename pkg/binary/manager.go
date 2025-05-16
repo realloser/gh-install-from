@@ -44,25 +44,25 @@ func (m *Manager) Install(repo string) error {
 	log.Debug("fetching latest release", "repo", repo)
 	release, err := m.client.GetLatestRelease(repo)
 	if err != nil {
-		log.Error("failed to get latest release", "repo", repo, "error", err)
-		return fmt.Errorf("failed to get latest release: %w", err)
+		return fmt.Errorf("failed to get latest release from %s: %w", repo, err)
+	}
+
+	if len(release.Assets) == 0 {
+		return fmt.Errorf("repository %s has no assets in its latest release", repo)
 	}
 
 	asset, err := m.findMatchingAsset(release.Assets)
 	if err != nil {
-		log.Error("failed to find matching asset", "repo", repo, "error", err)
-		return fmt.Errorf("failed to find matching asset: %w", err)
+		return fmt.Errorf("failed to find matching asset for %s: %w", repo, err)
 	}
 
 	destPath := filepath.Join(m.binDir, asset.Name)
 	log.Debug("downloading asset", "path", destPath, "url", asset.BrowserDownloadURL)
 	if err := m.client.DownloadAsset(asset.BrowserDownloadURL, destPath); err != nil {
-		log.Error("failed to download asset", "path", destPath, "error", err)
 		return fmt.Errorf("failed to download asset: %w", err)
 	}
 
 	if err := archive.ExtractFile(destPath, destPath); err != nil {
-		log.Error("failed to extract file", "path", destPath, "error", err)
 		return fmt.Errorf("failed to extract file: %w", err)
 	}
 

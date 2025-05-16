@@ -13,6 +13,11 @@ var (
 	verbose bool
 )
 
+func init() {
+	// Initialize with default settings
+	Init(false)
+}
+
 // Init initializes the logger with the given verbosity level
 func Init(isVerbose bool) {
 	verbose = isVerbose
