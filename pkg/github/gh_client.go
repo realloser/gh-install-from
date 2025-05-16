@@ -72,17 +72,22 @@ func (c *ghCliClient) GetLatestRelease(repo string) (*Release, error) {
 	}
 
 	cmd := exec.Command("gh", "api", fmt.Sprintf("repos/%s/releases/latest", repo))
-	output, err := cmd.Output()
-	if err != nil {
-		var stderr string
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			stderr = string(exitErr.Stderr)
+
+	// Capture both stdout and stderr
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		stderrStr := stderr.String()
+		if stderrStr != "" {
+			return nil, fmt.Errorf("failed to get latest release: %w\nCommand output: %s", err, stderrStr)
 		}
-		return nil, fmt.Errorf("failed to get latest release: %w, stderr: %s", err, stderr)
+		return nil, fmt.Errorf("failed to get latest release: %w", err)
 	}
 
 	var release Release
-	if err := json.Unmarshal(output, &release); err != nil {
+	if err := json.Unmarshal([]byte(stdout.String()), &release); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -102,7 +107,12 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	}
 
 	// Use gh api with --method GET and write output to file
-	cmd := exec.Command("gh", "api", "-X", "GET", downloadURL, "--raw")
+	// Note: We don't use --raw flag as it's not supported in all gh versions
+	cmd := exec.Command("gh", "api", downloadURL)
+
+	// Capture stderr
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 
 	// Open the destination file
 	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
@@ -122,11 +132,24 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 
 	// Run the command
 	if err := cmd.Run(); err != nil {
-		var stderr string
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			stderr = string(exitErr.Stderr)
+		stderrStr := stderr.String()
+		if stderrStr != "" {
+			// Check for specific error messages and provide clearer errors
+			if strings.Contains(stderrStr, "Not Found") {
+				return fmt.Errorf("asset not found at %s", downloadURL)
+			}
+			if strings.Contains(stderrStr, "no such file") {
+				return fmt.Errorf("failed to create file at %s: directory may not exist", destPath)
+			}
+			if strings.Contains(stderrStr, "permission denied") {
+				return fmt.Errorf("permission denied when writing to %s", destPath)
+			}
+			if strings.Contains(stderrStr, "unknown flag") {
+				return fmt.Errorf("incompatible gh CLI version. Please update gh CLI with 'brew upgrade gh' or your system's package manager")
+			}
+			return fmt.Errorf("failed to download asset: %w\nCommand output: %s", err, stderrStr)
 		}
-		return fmt.Errorf("failed to download asset: %w, stderr: %s", err, stderr)
+		return fmt.Errorf("failed to download asset: %w", err)
 	}
 
 	// Make the file executable
