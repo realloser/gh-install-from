@@ -11,10 +11,15 @@ import (
 
 // deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
-	Use:   "delete [binary-name]",
+	Use:   "delete [binary-name|owner/repo]",
 	Short: "Delete an installed binary",
 	Long: `Delete an installed binary and its metadata.
-The binary will be removed from ~/.local/bin and its metadata will be cleaned up.`,
+You can specify either the binary name or the repository name (owner/repo).
+The binary will be removed from ~/.local/bin and its metadata will be cleaned up.
+
+Examples:
+  gh install-from delete ripgrep      # Delete by binary name
+  gh install-from delete cli/cli      # Delete by repository name`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDelete,
 }
@@ -24,7 +29,7 @@ func init() {
 }
 
 func runDelete(cmd *cobra.Command, args []string) error {
-	binaryName := args[0]
+	nameOrRepo := args[0]
 
 	// Create a GitHub client
 	client, err := github.NewGhCliClient()
@@ -39,5 +44,5 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Use the manager to delete the binary
-	return manager.Delete(binaryName)
+	return manager.Delete(nameOrRepo)
 }
