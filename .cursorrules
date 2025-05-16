@@ -1,0 +1,81 @@
+{
+    "projectDescription": "A GitHub CLI extension to install binaries from GitHub releases. Automatically detects appropriate binaries for OS/architecture, handles compression, and manages updates.",
+    "conventions": {
+        "go": {
+            "packageNaming": "Use lowercase, short names for packages. Example: 'version', 'archive', 'cmd'",
+            "testNaming": "Test files should be named *_test.go and placed next to the files they test",
+            "errorHandling": "Always return errors rather than panicking. Use fmt.Errorf for context",
+            "documentation": "All exported functions must have godoc comments explaining their purpose"
+        },
+        "git": {
+            "commitMessages": "Use conventional commits format: feat:, fix:, docs:, test:, refactor:",
+            "branchNaming": "Use feature/, bugfix/, docs/, test/ prefixes for branches"
+        }
+    },
+    "fileTemplates": {
+        "test": {
+            "description": "Template for Go test files",
+            "template": "package ${packageName}\n\nimport (\n\t\"testing\"\n)\n\nfunc Test${functionName}(t *testing.T) {\n\ttests := []struct {\n\t\tname string\n\t\twant interface{}\n\t}{\n\t\t// TODO: Add test cases\n\t}\n\n\tfor _, tt := range tests {\n\t\tt.Run(tt.name, func(t *testing.T) {\n\t\t\t// TODO: Implement test\n\t\t})\n\t}\n}"
+        }
+    },
+    "tasks": {
+        "build": {
+            "command": "make build",
+            "description": "Build for current platform"
+        },
+        "test": {
+            "command": "make test",
+            "description": "Run tests with race detection and coverage"
+        },
+        "lint": {
+            "command": "make lint",
+            "description": "Run all linters"
+        },
+        "fix": {
+            "command": "make fix",
+            "description": "Fix common linting issues"
+        }
+    },
+    "lintRules": {
+        "go": {
+            "maxLineLength": 120,
+            "requiredImports": [
+                "context",
+                "errors"
+            ],
+            "bannedImports": [
+                "unsafe",
+                "syscall"
+            ]
+        }
+    },
+    "searchPaths": {
+        "tests": ["**/*_test.go"],
+        "source": ["pkg/**/*.go", "cmd/**/*.go", "main.go"],
+        "docs": ["**/*.md"]
+    },
+    "snippets": {
+        "errorCheck": {
+            "prefix": "iferr",
+            "body": "if err != nil {\n\treturn fmt.Errorf(\"${1:failed to}: %w\", err)\n}",
+            "description": "Standard error checking pattern"
+        },
+        "testCase": {
+            "prefix": "tcase",
+            "body": "{\n\tname: \"${1:test case}\",\n\twant: ${2:expected},\n},",
+            "description": "Test case struct template"
+        }
+    },
+    "security": {
+        "scanPatterns": [
+            "(?i)api[_-]?key",
+            "(?i)password",
+            "(?i)secret"
+        ],
+        "requiredHeaders": [
+            "Security Notice",
+            "Features",
+            "Installation"
+        ]
+    }
+} 
