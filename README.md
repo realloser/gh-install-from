@@ -24,6 +24,7 @@ This tool helps you download and install binaries from GitHub releases. Please n
 - 🚀 Multi-platform build support
 - 🔒 Security scanning of gh-install-from itself
 - 🛠️ Parallel builds for faster releases
+- 📝 Detailed logging with verbose mode
 
 ## Installation
 
@@ -47,6 +48,20 @@ gh install-from BurntSushi/ripgrep
 
 - `--version, -v`: Print version information
 - `--no-version-check`: Disable automatic version check
+- `--verbose, -V`: Enable verbose output with detailed logging
+
+### Verbose Mode
+
+When using the `--verbose` flag, the tool will output detailed information about:
+- Binary detection and selection
+- Download progress and file operations
+- Version checking and updates
+- Installation paths and file operations
+
+Example with verbose output:
+```bash
+gh install-from --verbose BurntSushi/ripgrep
+```
 
 ## Development
 

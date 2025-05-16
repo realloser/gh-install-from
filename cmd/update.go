@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/realloser/gh-install-from/pkg/log"
 )
 
 // updateCmd represents the update command
@@ -45,6 +46,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	installDir := filepath.Join(homeDir, ".local", "bin")
 	if len(args) == 0 {
 		// Update all installed binaries
+		log.Info("updating all installed binaries")
 		entries, err := os.ReadDir(installDir)
 		if err != nil {
 			return fmt.Errorf("failed to read install directory: %w", err)
@@ -55,19 +57,24 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			if entry.Type()&os.ModeSymlink != 0 {
 				target, err := os.Readlink(filepath.Join(installDir, entry.Name()))
 				if err != nil {
-					updateErrors = append(updateErrors, fmt.Sprintf("failed to read symlink %s: %v", entry.Name(), err))
+					msg := fmt.Sprintf("failed to read symlink %s: %v", entry.Name(), err)
+					log.Error("symlink error", "name", entry.Name(), "error", err)
+					updateErrors = append(updateErrors, msg)
 					continue
 				}
 
 				// Extract repo from target path
 				repoPath := extractRepoFromPath(target)
 				if repoPath == "" {
+					log.Debug("skipping non-repository binary", "name", entry.Name())
 					continue
 				}
 
-				fmt.Printf("Updating %s...\n", repoPath)
+				log.Info("updating binary", "repo", repoPath)
 				if err := installLatestVersion(repoPath); err != nil {
-					updateErrors = append(updateErrors, fmt.Sprintf("failed to update %s: %v", repoPath, err))
+					msg := fmt.Sprintf("failed to update %s: %v", repoPath, err)
+					log.Error("update error", "repo", repoPath, "error", err)
+					updateErrors = append(updateErrors, msg)
 				}
 			}
 		}
@@ -78,7 +85,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	} else {
 		// Update specific binary
 		repo := args[0]
-		fmt.Printf("Updating %s...\n", repo)
+		log.Info("updating binary", "repo", repo)
 		if err := installLatestVersion(repo); err != nil {
 			return fmt.Errorf("failed to update %s: %v", repo, err)
 		}

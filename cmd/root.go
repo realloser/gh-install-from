@@ -12,12 +12,14 @@ import (
 
 	"github.com/cli/go-gh"
 	"github.com/spf13/cobra"
+	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/version"
 )
 
 var (
 	versionFlag bool
 	noVersionCheck bool
+	verboseFlag bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -28,6 +30,11 @@ var rootCmd = &cobra.Command{
 binaries from GitHub releases. It automatically detects the appropriate
 binary for your OS and architecture, handles compressed files, and manages
 updates.`,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Initialize logging with verbose flag
+		log.Init(verboseFlag)
+		log.Debug("verbose mode enabled")
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if versionFlag {
 			fmt.Println(version.DetailedInfo())
@@ -36,7 +43,7 @@ updates.`,
 
 		if !noVersionCheck {
 			if err := checkForUpdates(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: Failed to check for updates: %v\n", err)
+				log.Warn("failed to check for updates", "error", err)
 			}
 		}
 
@@ -62,6 +69,7 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
+	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "V", false, "Enable verbose output")
 	rootCmd.Flags().BoolVarP(&versionFlag, "version", "v", false, "Print version information")
 	rootCmd.Flags().BoolVar(&noVersionCheck, "no-version-check", false, "Disable version check")
 }
@@ -69,12 +77,14 @@ func init() {
 func checkForUpdates() error {
 	// Only check once per day
 	if shouldSkipVersionCheck() {
+		log.Debug("skipping version check - last check was less than 24h ago")
 		return nil
 	}
 
+	log.Debug("checking for updates")
 	client, err := gh.RESTClient(nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
 	var release struct {
@@ -83,13 +93,22 @@ func checkForUpdates() error {
 
 	err = client.Get("repos/realloser/gh-install-from/releases/latest", &release)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get latest release: %w", err)
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 	currentVersion := version.Info()
 
+	log.Debug("version check",
+		"current", currentVersion,
+		"latest", latestVersion,
+	)
+
 	if currentVersion != "dev" && latestVersion > currentVersion {
+		log.Info("new version available",
+			"current", currentVersion,
+			"latest", latestVersion,
+		)
 		fmt.Fprintf(os.Stderr, "\nA new version of gh-install-from is available: %s → %s\n", currentVersion, latestVersion)
 		fmt.Fprintf(os.Stderr, "Run 'gh extension upgrade gh-install-from' to update\n\n")
 	}

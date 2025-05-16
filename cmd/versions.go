@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/go-gh"
 	"github.com/spf13/cobra"
+	"github.com/realloser/gh-install-from/pkg/log"
 )
 
 type releaseVersion struct {
@@ -54,6 +55,8 @@ func init() {
 
 func runVersions(cmd *cobra.Command, args []string) error {
 	repo := args[0]
+	log.Info("fetching versions", "repo", repo)
+
 	client, err := gh.RESTClient(nil)
 	if err != nil {
 		return fmt.Errorf("failed to create GitHub client: %w", err)
@@ -69,12 +72,15 @@ func runVersions(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get releases: %w", err)
 	}
 
+	log.Debug("found releases", "count", len(releases))
+
 	items := make([]list.Item, len(releases))
 	for i, r := range releases {
 		items[i] = releaseVersion{
 			tag:       r.TagName,
 			createdAt: r.CreatedAt,
 		}
+		log.Debug("release", "tag", r.TagName, "date", r.CreatedAt)
 	}
 
 	m := model{
@@ -89,7 +95,10 @@ func runVersions(cmd *cobra.Command, args []string) error {
 	}
 
 	if finalModel.(model).selected != "" {
+		log.Info("version selected", "version", finalModel.(model).selected)
 		fmt.Printf("Selected version: %s\n", finalModel.(model).selected)
+	} else {
+		log.Debug("no version selected")
 	}
 
 	return nil

@@ -18,6 +18,7 @@ import (
 	"github.com/cli/go-gh"
 	"github.com/spf13/cobra"
 	"github.com/realloser/gh-install-from/pkg/archive"
+	"github.com/realloser/gh-install-from/pkg/log"
 )
 
 // downloadMsg represents a download progress message
@@ -91,6 +92,8 @@ func init() {
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	repo := args[0]
+	log.Info("installing binary", "repo", repo)
+
 	client, err := gh.RESTClient(nil)
 	if err != nil {
 		return fmt.Errorf("failed to create GitHub client: %w", err)
@@ -104,6 +107,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		} `json:"assets"`
 	}
 
+	log.Debug("fetching latest release", "repo", repo)
 	err = client.Get(fmt.Sprintf("repos/%s/releases/latest", repo), &release)
 	if err != nil {
 		return fmt.Errorf("failed to get latest release: %w", err)
@@ -112,15 +116,23 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	// Find matching binary for current OS/Arch
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
+	log.Debug("looking for binary",
+		"os", osName,
+		"arch", archName,
+		"assets", len(release.Assets),
+	)
+
 	var matchingAsset struct {
 		Name string
 		URL  string
 	}
 
 	for _, asset := range release.Assets {
+		log.Debug("checking asset", "name", asset.Name)
 		if matchBinary(asset.Name, osName, archName) {
 			matchingAsset.Name = asset.Name
 			matchingAsset.URL = asset.BrowserDownloadURL
+			log.Debug("found matching binary", "name", asset.Name)
 			break
 		}
 	}
@@ -136,6 +148,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	installDir := filepath.Join(homeDir, ".local", "bin")
+	log.Debug("creating install directory", "path", installDir)
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
@@ -157,6 +170,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	model := downloadModel{
 		progress: p,
 	}
+
+	log.Debug("starting download", "url", matchingAsset.URL)
 
 	// Start download program
 	prog := tea.NewProgram(&model)
@@ -219,11 +234,20 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 	binaryPath := filepath.Join(installDir, binaryName)
 
+	log.Debug("extracting binary",
+		"source", tmpFile.Name(),
+		"destination", binaryPath,
+	)
+
 	// Extract or copy the binary
 	if err := archive.ExtractFile(tmpFile.Name(), binaryPath); err != nil {
 		return fmt.Errorf("failed to extract binary: %w", err)
 	}
 
+	log.Info("installation complete",
+		"binary", binaryName,
+		"path", binaryPath,
+	)
 	fmt.Printf("Successfully installed %s to %s\n", binaryName, binaryPath)
 	return nil
 }
