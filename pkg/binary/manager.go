@@ -94,24 +94,64 @@ func (m *Manager) findMatchingAsset(assets []github.Asset) (*github.Asset, error
 	return nil, fmt.Errorf("no matching asset found for %s", osArch)
 }
 
-// Delete removes an installed binary and its metadata
-func (m *Manager) Delete(binaryName string) error {
-	binaryPath := filepath.Join(m.binDir, binaryName)
-
-	// Check if the binary exists
-	if _, err := os.Stat(binaryPath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("binary %s is not installed", binaryName)
-		}
-		return fmt.Errorf("failed to check binary: %w", err)
-	}
-
-	// Load metadata before deleting the binary
-	meta, err := metadata.Load(binaryPath)
+// findBinaryByRepo returns the binary name and metadata for a given repository
+func (m *Manager) findBinaryByRepo(repo string) (string, *metadata.BinaryMetadata, error) {
+	entries, err := os.ReadDir(m.binDir)
 	if err != nil {
-		log.Debug("failed to load metadata", "error", err)
-		// Continue with deletion even if metadata is missing
+		return "", nil, fmt.Errorf("failed to read bin directory: %w", err)
 	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		binaryPath := filepath.Join(m.binDir, entry.Name())
+		meta, err := metadata.Load(binaryPath)
+		if err != nil {
+			continue // Skip binaries without metadata
+		}
+
+		if meta.Repository == repo {
+			return entry.Name(), meta, nil
+		}
+	}
+
+	return "", nil, fmt.Errorf("no binary found for repository %s", repo)
+}
+
+// Delete removes an installed binary and its metadata
+func (m *Manager) Delete(nameOrRepo string) error {
+	var binaryName string
+	var meta *metadata.BinaryMetadata
+
+	// First try to find by repository name
+	foundName, foundMeta, err := m.findBinaryByRepo(nameOrRepo)
+	if err == nil {
+		binaryName = foundName
+		meta = foundMeta
+	} else {
+		// If not found by repo, try as binary name
+		binaryName = nameOrRepo
+		binaryPath := filepath.Join(m.binDir, binaryName)
+
+		// Check if the binary exists
+		if _, err := os.Stat(binaryPath); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("binary %s is not installed", nameOrRepo)
+			}
+			return fmt.Errorf("failed to check binary: %w", err)
+		}
+
+		// Try to load metadata
+		meta, err = metadata.Load(binaryPath)
+		if err != nil {
+			log.Debug("failed to load metadata", "error", err)
+			// Continue with deletion even if metadata is missing
+		}
+	}
+
+	binaryPath := filepath.Join(m.binDir, binaryName)
 
 	// Delete the binary
 	if err := os.Remove(binaryPath); err != nil {
