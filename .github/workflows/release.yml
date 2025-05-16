@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -20,17 +20,78 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
+          cache: true
+
+      - name: Verify dependencies
+        run: go mod verify
 
       - name: Run tests
         run: make test
 
+      - name: Run linters
+        run: make lint
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+          cache: true
+
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
       - name: Build release artifacts
-        run: make release
+        run: make -j$(nproc) release
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          for file in *.tar.gz; do
+            sha256sum "$file" >> checksums.txt
+          done
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
           draft: false
           prerelease: false
-          generate_release_notes: true 
+          generate_release_notes: true
+          name: Release ${{ env.VERSION }}
+          body: |
+            ## Release ${{ env.VERSION }}
+
+            ### Installation
+            ```bash
+            gh extension install realloser/gh-install-from
+            ```
+
+            ### Checksums
+            ```
+            $(cat dist/checksums.txt)
+            ```
+
+            ### Supported Platforms
+            - macOS (amd64, arm64)
+            - Linux (386, amd64, arm, arm64)
+            - Windows (386, amd64)
+
+  notify:
+    needs: build
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Notify about successful release
+        run: |
+          echo "Release ${{ github.ref_name }} has been published successfully!"
+          # Add notification mechanisms here (e.g., Slack, Discord, etc.) 

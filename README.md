@@ -9,6 +9,8 @@ A GitHub CLI extension to install binaries from GitHub releases. It automaticall
 - 🔄 Version management and updates
 - 📊 Progress bar for downloads
 - 🚀 Multi-platform build support
+- 🔒 Security scanning and validation
+- 🛠️ Parallel builds for faster releases
 
 ## Installation
 
@@ -41,6 +43,11 @@ gh install-from BurntSushi/ripgrep
 - GNU Make
 - Git
 
+Optional tools (automatically installed when needed):
+- golangci-lint
+- gosec
+- goimports
+
 ### Building
 
 Build for your current platform:
@@ -55,19 +62,38 @@ make install
 
 ### Testing and Linting
 
-Run tests:
+Run tests (with race detection and coverage):
 ```bash
 make test
 ```
 
-Run linters:
+Run all linters:
 ```bash
 make lint
 ```
 
+Available linting commands:
+```bash
+make lint-golangci  # Run comprehensive linting
+make lint-go        # Run go vet and verify modules
+make lint-sec       # Run security checks
+make lint-imports   # Fix imports formatting
+make lint-fmt       # Check code formatting
+```
+
+Fix common linting issues automatically:
+```bash
+make fix
+```
+
+See all available make targets:
+```bash
+make help
+```
+
 ### Release Build
 
-Build for all supported platforms (with parallel execution):
+Build for all supported platforms with parallel execution:
 ```bash
 # Build with 4 parallel jobs
 make -j4 release
@@ -90,15 +116,48 @@ git push origin vX.Y.Z
 ```
 
 The GitHub Actions workflow will automatically:
+- Run comprehensive tests and linting
 - Build binaries for all supported platforms
+- Generate SHA256 checksums
 - Create a GitHub release
-- Upload the binaries as release assets
+- Upload the binaries and checksums
+- Generate release notes
+
+## CI/CD
+
+### Pull Request Checks
+
+All pull requests undergo automated checks:
+- Code validation (formatting, linting)
+- Cross-platform builds (Linux, macOS, Windows)
+- Binary size verification (10MB limit)
+- Security scanning (gosec, nancy)
+- Dependency verification
+- Test coverage
+
+### Release Process
+
+Releases are automated and triggered by version tags:
+- Comprehensive validation
+- Parallel multi-platform builds
+- Checksum generation
+- Release notes generation
+- Binary uploads
 
 ## Supported Platforms
 
 - macOS (amd64, arm64)
 - Linux (386, amd64, arm, arm64)
 - Windows (386, amd64)
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Run tests and linting (`make test && make lint`)
+4. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
 
 ## License
 
