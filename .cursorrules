@@ -5,7 +5,8 @@
             "packageNaming": "Use lowercase, short names for packages. Example: 'version', 'archive', 'cmd'",
             "testNaming": "Test files should be named *_test.go and placed next to the files they test",
             "errorHandling": "Always return errors rather than panicking. Use fmt.Errorf for context",
-            "documentation": "All exported functions must have godoc comments explaining their purpose"
+            "documentation": "All exported functions must have godoc comments explaining their purpose",
+            "version": "Use latest version of go"
         },
         "git": {
             "commitMessages": "Use conventional commits format: feat:, fix:, docs:, test:, refactor:",
