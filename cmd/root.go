@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/version"
@@ -23,11 +24,25 @@ var (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "gh-install-from",
+	Use:   "gh-install-from [owner/repo]",
 	Short: "Install binaries from GitHub releases",
 	Long: `A GitHub CLI extension to install binaries from GitHub releases.
 It automatically detects the appropriate binary for your OS and architecture,
-handles compressed files, and manages updates.`,
+handles compressed files, and manages updates.
+
+Examples:
+  # Install a binary
+  gh install-from cli/cli
+
+  # Remove a binary
+  gh install-from remove cli/cli
+
+  # Update all installed binaries
+  gh install-from update
+
+  # List installed binaries
+  gh install-from list`,
+	Args:         cobra.MaximumNArgs(1),
 	SilenceUsage: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		if verbose {
@@ -42,7 +57,29 @@ handles compressed files, and manages updates.`,
 			fmt.Print(version.DetailedInfo())
 			return nil
 		}
-		return cmd.Usage()
+
+		if len(args) == 0 {
+			return cmd.Usage()
+		}
+
+		repo := args[0]
+		log.Debug("installing binary", "repo", repo)
+
+		client, err := github.NewGhCliClient()
+		if err != nil {
+			return fmt.Errorf("failed to create GitHub client: %w", err)
+		}
+
+		manager, err := binary.New(client)
+		if err != nil {
+			return fmt.Errorf("failed to create binary manager: %w", err)
+		}
+
+		if err := manager.Install(repo); err != nil {
+			return fmt.Errorf("failed to install binary: %w", err)
+		}
+
+		return nil
 	},
 }
 
