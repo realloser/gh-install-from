@@ -12,6 +12,7 @@ import (
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/metadata"
+	"github.com/realloser/gh-install-from/pkg/ui"
 )
 
 // Manager handles binary management operations
@@ -78,7 +79,7 @@ func (m *Manager) Install(repo string) error {
 		// Don't fail the installation if metadata storage fails
 	}
 
-	log.Info("installed binary", "name", asset.Name, "path", destPath, "version", release.TagName)
+	fmt.Println(ui.FormatActionMessage("Installed", ui.FormatBinaryInfo(asset.Name, destPath, release.TagName)))
 	return nil
 }
 
@@ -125,7 +126,7 @@ func (m *Manager) Delete(binaryName string) error {
 		}
 	}
 
-	log.Info("deleted binary", "name", binaryName)
+	fmt.Println(ui.FormatActionMessage("Deleted", ui.FormatBinaryInfo(binaryName, binaryPath, meta.Version)))
 	return nil
 }
 
@@ -188,7 +189,11 @@ func (m *Manager) GetBinDir() string {
 // Update updates a specific binary from its repository
 func (m *Manager) Update(repo string) error {
 	log.Info("updating binary", "repo", repo)
-	return m.Install(repo)
+	if err := m.Install(repo); err != nil {
+		return err
+	}
+	fmt.Println(ui.FormatActionMessage("Updated", ui.FormatBinaryInfo("", "", repo)))
+	return nil
 }
 
 // UpdateAll updates all installed binaries that were installed from GitHub repositories
@@ -217,7 +222,6 @@ func (m *Manager) UpdateAll() error {
 			continue
 		}
 
-		log.Info("updating binary", "repo", meta.Repository)
 		if err := m.Update(meta.Repository); err != nil {
 			msg := fmt.Sprintf("failed to update %s: %v", meta.Repository, err)
 			log.Error("update error", "repo", meta.Repository, "error", err)
