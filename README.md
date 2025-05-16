@@ -2,6 +2,19 @@
 
 A GitHub CLI extension to install binaries from GitHub releases. It automatically detects the appropriate binary for your OS and architecture, handles compressed files, and manages updates.
 
+## ⚠️ Security Notice
+
+This tool helps you download and install binaries from GitHub releases. Please note:
+
+- **No Binary Verification**: While this tool itself undergoes security scanning, it **does not** verify the security or authenticity of the binaries you install
+- **Trust Required**: You should only install binaries from repositories and authors you trust
+- **Your Responsibility**: Always verify the source and reputation of repositories before installing their binaries
+- **Recommended Practices**:
+  - Check the repository's security practices
+  - Verify release signatures if available
+  - Review the repository's security advisories
+  - Consider using package managers for well-known software
+
 ## Features
 
 - 🔍 Automatic OS and architecture detection
@@ -9,7 +22,7 @@ A GitHub CLI extension to install binaries from GitHub releases. It automaticall
 - 🔄 Version management and updates
 - 📊 Progress bar for downloads
 - 🚀 Multi-platform build support
-- 🔒 Security scanning and validation
+- 🔒 Security scanning of gh-install-from itself
 - 🛠️ Parallel builds for faster releases
 
 ## Installation
@@ -124,6 +137,27 @@ The GitHub Actions workflow will automatically:
 - Generate release notes
 
 ## CI/CD
+
+### Security Measures
+
+The following security measures apply to the `gh-install-from` tool itself:
+
+1. **Static Analysis**:
+   - Code security scanning with gosec
+   - Dependency vulnerability checking with nancy
+   - Regular automated security updates
+
+2. **Build Security**:
+   - Reproducible builds
+   - SHA256 checksums for verification
+   - Automated binary size limits
+
+3. **Runtime Security**:
+   - Minimal required permissions
+   - Safe archive extraction
+   - Proper error handling
+
+Note: These security measures only apply to the `gh-install-from` tool itself, not to the binaries you install using it.
 
 ### Pull Request Checks
 
