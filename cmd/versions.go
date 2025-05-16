@@ -13,14 +13,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type version struct {
+type releaseVersion struct {
 	tag       string
 	createdAt string
 }
 
-func (v version) Title() string       { return v.tag }
-func (v version) Description() string { return v.createdAt }
-func (v version) FilterValue() string { return v.tag }
+func (v releaseVersion) Title() string       { return v.tag }
+func (v releaseVersion) Description() string { return v.createdAt }
+func (v releaseVersion) FilterValue() string { return v.tag }
 
 type model struct {
 	list     list.Model
@@ -71,7 +71,7 @@ func runVersions(cmd *cobra.Command, args []string) error {
 
 	items := make([]list.Item, len(releases))
 	for i, r := range releases {
-		items[i] = version{
+		items[i] = releaseVersion{
 			tag:       r.TagName,
 			createdAt: r.CreatedAt,
 		}
@@ -106,7 +106,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if msg.String() == "enter" {
-			i, ok := m.list.SelectedItem().(version)
+			i, ok := m.list.SelectedItem().(releaseVersion)
 			if ok {
 				m.selected = i.tag
 				return m, tea.Quit

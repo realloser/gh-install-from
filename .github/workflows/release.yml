@@ -5,25 +5,32 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: '1.21'
-          
-      - name: Build
-        run: |
-          go build -v -o gh-install-from
-          
+
+      - name: Run tests
+        run: make test
+
+      - name: Build release artifacts
+        run: make release
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: gh-install-from
+          files: dist/*.tar.gz
+          draft: false
+          prerelease: false
           generate_release_notes: true 
