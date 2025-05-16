@@ -17,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/go-gh"
 	"github.com/spf13/cobra"
+	"github.com/realloser/gh-install-from/pkg/archive"
 )
 
 // downloadMsg represents a download progress message
@@ -204,6 +205,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Create the final binary path
 	binaryName := filepath.Base(matchingAsset.Name)
+	if strings.HasSuffix(binaryName, ".tar.gz") || strings.HasSuffix(binaryName, ".tgz") {
+		binaryName = strings.TrimSuffix(binaryName, ".tar.gz")
+		binaryName = strings.TrimSuffix(binaryName, ".tgz")
+	} else if strings.HasSuffix(binaryName, ".zip") {
+		binaryName = strings.TrimSuffix(binaryName, ".zip")
+	}
+
 	if !strings.Contains(binaryName, ".") {
 		// If no extension, use the repo name
 		parts := strings.Split(args[0], "/")
@@ -211,14 +219,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	}
 	binaryPath := filepath.Join(installDir, binaryName)
 
-	// Make the temporary file executable
-	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
-		return fmt.Errorf("failed to make binary executable: %w", err)
-	}
-
-	// Move the binary to the installation directory
-	if err := os.Rename(tmpFile.Name(), binaryPath); err != nil {
-		return fmt.Errorf("failed to move binary to installation directory: %w", err)
+	// Extract or copy the binary
+	if err := archive.ExtractFile(tmpFile.Name(), binaryPath); err != nil {
+		return fmt.Errorf("failed to extract binary: %w", err)
 	}
 
 	fmt.Printf("Successfully installed %s to %s\n", binaryName, binaryPath)
@@ -230,6 +233,12 @@ func matchBinary(name, os, arch string) bool {
 	name = strings.ToLower(name)
 	os = strings.ToLower(os)
 	arch = strings.ToLower(arch)
+
+	// Check if it's a compressed file first
+	if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".tgz") || strings.HasSuffix(name, ".zip") {
+		// For compressed files, we'll check if the name contains OS and arch
+		return strings.Contains(name, os) && strings.Contains(name, arch)
+	}
 
 	// Map common architecture names
 	archMap := map[string][]string{
