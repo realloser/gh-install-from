@@ -5,11 +5,9 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/realloser/gh-install-from/pkg/log"
+	"github.com/realloser/gh-install-from/pkg/binary"
+	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/spf13/cobra"
 )
 
@@ -37,73 +35,19 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	homeDir, err := os.UserHomeDir()
+	client, err := github.NewGhCliClient()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
-	installDir := filepath.Join(homeDir, ".local", "bin")
+	manager, err := binary.New(client)
+	if err != nil {
+		return fmt.Errorf("failed to create binary manager: %w", err)
+	}
+
 	if len(args) == 0 {
-		// Update all installed binaries
-		log.Info("updating all installed binaries")
-		entries, err := os.ReadDir(installDir)
-		if err != nil {
-			return fmt.Errorf("failed to read install directory: %w", err)
-		}
-
-		var updateErrors []string
-		for _, entry := range entries {
-			if entry.Type()&os.ModeSymlink != 0 {
-				target, err := os.Readlink(filepath.Join(installDir, entry.Name()))
-				if err != nil {
-					msg := fmt.Sprintf("failed to read symlink %s: %v", entry.Name(), err)
-					log.Error("symlink error", "name", entry.Name(), "error", err)
-					updateErrors = append(updateErrors, msg)
-					continue
-				}
-
-				// Extract repo from target path
-				repoPath := extractRepoFromPath(target)
-				if repoPath == "" {
-					log.Debug("skipping non-repository binary", "name", entry.Name())
-					continue
-				}
-
-				log.Info("updating binary", "repo", repoPath)
-				if err := installLatestVersion(repoPath); err != nil {
-					msg := fmt.Sprintf("failed to update %s: %v", repoPath, err)
-					log.Error("update error", "repo", repoPath, "error", err)
-					updateErrors = append(updateErrors, msg)
-				}
-			}
-		}
-
-		if len(updateErrors) > 0 {
-			return fmt.Errorf("update completed with errors:\n%s", strings.Join(updateErrors, "\n"))
-		}
-	} else {
-		// Update specific binary
-		repo := args[0]
-		log.Info("updating binary", "repo", repo)
-		if err := installLatestVersion(repo); err != nil {
-			return fmt.Errorf("failed to update %s: %v", repo, err)
-		}
+		return manager.UpdateAll()
 	}
 
-	return nil
-}
-
-func extractRepoFromPath(path string) string {
-	// This is a simple implementation. You might want to store metadata
-	// about installed binaries to make this more reliable.
-	parts := strings.Split(filepath.Base(path), "-")
-	if len(parts) >= 2 {
-		return fmt.Sprintf("%s/%s", parts[0], parts[1])
-	}
-	return ""
-}
-
-func installLatestVersion(repo string) error {
-	// Reuse the install command
-	return runInstall(nil, []string{repo})
+	return manager.Update(args[0])
 }

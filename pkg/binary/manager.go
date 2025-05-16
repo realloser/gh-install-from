@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/realloser/gh-install-from/pkg/archive"
 	"github.com/realloser/gh-install-from/pkg/github"
@@ -182,4 +183,51 @@ func (m *Manager) GetBinaryPath(binaryName string) string {
 // GetBinDir returns the binary installation directory
 func (m *Manager) GetBinDir() string {
 	return m.binDir
+}
+
+// Update updates a specific binary from its repository
+func (m *Manager) Update(repo string) error {
+	log.Info("updating binary", "repo", repo)
+	return m.Install(repo)
+}
+
+// UpdateAll updates all installed binaries that were installed from GitHub repositories
+func (m *Manager) UpdateAll() error {
+	log.Info("updating all installed binaries")
+	entries, err := os.ReadDir(m.binDir)
+	if err != nil {
+		return fmt.Errorf("failed to read install directory: %w", err)
+	}
+
+	var updateErrors []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		binaryPath := filepath.Join(m.binDir, entry.Name())
+		meta, err := metadata.Load(binaryPath)
+		if err != nil {
+			log.Debug("skipping binary without metadata", "name", entry.Name())
+			continue
+		}
+
+		if meta.Repository == "" {
+			log.Debug("skipping binary without repository info", "name", entry.Name())
+			continue
+		}
+
+		log.Info("updating binary", "repo", meta.Repository)
+		if err := m.Update(meta.Repository); err != nil {
+			msg := fmt.Sprintf("failed to update %s: %v", meta.Repository, err)
+			log.Error("update error", "repo", meta.Repository, "error", err)
+			updateErrors = append(updateErrors, msg)
+		}
+	}
+
+	if len(updateErrors) > 0 {
+		return fmt.Errorf("update completed with errors:\n%s", strings.Join(updateErrors, "\n"))
+	}
+
+	return nil
 }
