@@ -23,10 +23,12 @@ var (
 	// Content styles
 	pathStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#BDC3C7")). // Light gray
-			Italic(true)
+			Italic(true).
+			PaddingLeft(1)
 
 	versionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9B59B6")) // Purple
+			Foreground(lipgloss.Color("#9B59B6")). // Purple
+			PaddingLeft(1)
 )
 
 // FormatBinaryInfo formats binary information with consistent styling
