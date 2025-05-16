@@ -25,8 +25,24 @@ func Init(isVerbose bool) {
 
 	opts := &slog.HandlerOptions{
 		Level: level,
-		// Add source file and line to log output in verbose mode
-		AddSource: verbose,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Remove time from output
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			// Remove source file info
+			if a.Key == slog.SourceKey {
+				return slog.Attr{}
+			}
+			// Clean up level prefix
+			if a.Key == slog.LevelKey {
+				return slog.Attr{
+					Key:   "level",
+					Value: a.Value,
+				}
+			}
+			return a
+		},
 	}
 
 	// Create a text handler for human-readable output
@@ -35,10 +51,6 @@ func Init(isVerbose bool) {
 
 	// Set as default logger
 	slog.SetDefault(Logger)
-
-	if verbose {
-		Logger.Debug("verbose logging enabled")
-	}
 }
 
 // IsVerbose returns whether verbose logging is enabled
@@ -49,21 +61,61 @@ func IsVerbose() bool {
 // Debug logs at debug level if verbose mode is enabled
 func Debug(msg string, args ...any) {
 	if verbose {
-		Logger.Debug(msg, args...)
+		// Convert args to proper key-value pairs
+		kvs := make([]any, 0, len(args))
+		for i := 0; i < len(args); i++ {
+			if i+1 < len(args) {
+				kvs = append(kvs, args[i], args[i+1])
+				i++
+			} else {
+				kvs = append(kvs, "value", args[i])
+			}
+		}
+		Logger.Debug(msg, kvs...)
 	}
 }
 
 // Info logs at info level
 func Info(msg string, args ...any) {
-	Logger.Info(msg, args...)
+	// Convert args to proper key-value pairs
+	kvs := make([]any, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if i+1 < len(args) {
+			kvs = append(kvs, args[i], args[i+1])
+			i++
+		} else {
+			kvs = append(kvs, "value", args[i])
+		}
+	}
+	Logger.Info(msg, kvs...)
 }
 
 // Warn logs at warn level
 func Warn(msg string, args ...any) {
-	Logger.Warn(msg, args...)
+	// Convert args to proper key-value pairs
+	kvs := make([]any, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if i+1 < len(args) {
+			kvs = append(kvs, args[i], args[i+1])
+			i++
+		} else {
+			kvs = append(kvs, "value", args[i])
+		}
+	}
+	Logger.Warn(msg, kvs...)
 }
 
 // Error logs at error level
 func Error(msg string, args ...any) {
-	Logger.Error(msg, args...)
+	// Convert args to proper key-value pairs
+	kvs := make([]any, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		if i+1 < len(args) {
+			kvs = append(kvs, args[i], args[i+1])
+			i++
+		} else {
+			kvs = append(kvs, "value", args[i])
+		}
+	}
+	Logger.Error(msg, kvs...)
 }

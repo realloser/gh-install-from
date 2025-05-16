@@ -39,7 +39,7 @@ func New(client github.Client) (*Manager, error) {
 
 // Install installs a binary from a GitHub repository
 func (m *Manager) Install(repo string) error {
-	log.Debug("fetching latest release for", repo)
+	log.Debug("fetching latest release", "repo", repo)
 	release, err := m.client.GetLatestRelease(repo)
 	if err != nil {
 		return fmt.Errorf("failed to get latest release: %w", err)
@@ -51,7 +51,7 @@ func (m *Manager) Install(repo string) error {
 	}
 
 	destPath := filepath.Join(m.binDir, asset.Name)
-	log.Debug("downloading asset to", destPath)
+	log.Debug("downloading asset", "path", destPath)
 	if err := m.client.DownloadAsset(asset.BrowserDownloadURL, destPath); err != nil {
 		return fmt.Errorf("failed to download asset: %w", err)
 	}
@@ -69,11 +69,11 @@ func (m *Manager) Install(repo string) error {
 	}
 
 	if err := metadata.Store(meta); err != nil {
-		log.Debug("failed to store metadata:", err)
+		log.Debug("failed to store metadata", "error", err)
 		// Don't fail the installation if metadata storage fails
 	}
 
-	log.Info("installed", asset.Name, "to", destPath)
+	log.Info("installed binary", "name", asset.Name, "path", destPath)
 	return nil
 }
 
@@ -103,7 +103,7 @@ func (m *Manager) Delete(binaryName string) error {
 	// Load metadata before deleting the binary
 	meta, err := metadata.Load(binaryPath)
 	if err != nil {
-		log.Debug("failed to load metadata:", err)
+		log.Debug("failed to load metadata", "error", err)
 		// Continue with deletion even if metadata is missing
 	}
 
@@ -115,12 +115,12 @@ func (m *Manager) Delete(binaryName string) error {
 	// Delete metadata if it exists
 	if meta != nil {
 		if err := metadata.Delete(binaryPath); err != nil {
-			log.Debug("failed to delete metadata:", err)
+			log.Debug("failed to delete metadata", "error", err)
 			// Don't fail if metadata deletion fails
 		}
 	}
 
-	log.Info("deleted", binaryName)
+	log.Info("deleted binary", "name", binaryName)
 	return nil
 }
 
@@ -149,7 +149,7 @@ func (m *Manager) ListInstalled() ([]InstalledBinary, error) {
 		binaryPath := filepath.Join(m.binDir, entry.Name())
 		meta, err := metadata.Load(binaryPath)
 		if err != nil {
-			log.Debug("failed to load metadata for", entry.Name()+":", err)
+			log.Debug("failed to load metadata", "binary", entry.Name(), "error", err)
 			// Include binary with minimal info if metadata is missing
 			binaries = append(binaries, InstalledBinary{
 				Name: entry.Name(),

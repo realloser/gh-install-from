@@ -28,7 +28,7 @@ func init() {
 
 func runInstall(cmd *cobra.Command, args []string) error {
 	repo := args[0]
-	log.Debug("installing from repository:", repo)
+	log.Debug("installing binary", "repo", repo)
 
 	client, err := github.NewGhCliClient()
 	if err != nil {
