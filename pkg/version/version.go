@@ -15,4 +15,4 @@ func Info() string {
 // DetailedInfo returns detailed version information
 func DetailedInfo() string {
 	return "Version: " + Version + "\nCommit: " + Commit + "\nBuild Date: " + Date
-} 
+}

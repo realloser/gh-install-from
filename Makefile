@@ -4,9 +4,9 @@ COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 DATE := $(shell date -u '+%Y-%m-%d-%H%M UTC')
 
 # Build flags
-LDFLAGS=-ldflags "-X github.com/realloser/gh-install-from/pkg/version.Version=$(VERSION) \
-                  -X github.com/realloser/gh-install-from/pkg/version.Commit=$(COMMIT) \
-                  -X github.com/realloser/gh-install-from/pkg/version.Date=$(DATE)"
+LDFLAGS=-ldflags="-X 'github.com/realloser/gh-install-from/pkg/version.Version=$(VERSION)' \
+                  -X 'github.com/realloser/gh-install-from/pkg/version.Commit=$(COMMIT)' \
+                  -X 'github.com/realloser/gh-install-from/pkg/version.Date=$(DATE)'"
 
 # Supported platforms
 PLATFORMS=darwin/amd64 darwin/arm64 linux/386 linux/amd64 linux/arm linux/arm64 windows/386 windows/amd64

@@ -7,7 +7,7 @@ func TestInfo(t *testing.T) {
 	origVersion := Version
 	origCommit := Commit
 	origDate := Date
-	
+
 	// Restore original values after test
 	defer func() {
 		Version = origVersion
@@ -17,19 +17,19 @@ func TestInfo(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name     string
-		version  string
-		want     string
+		name    string
+		version string
+		want    string
 	}{
 		{
-			name:     "default values",
-			version:  "dev",
-			want:     "dev",
+			name:    "default values",
+			version: "dev",
+			want:    "dev",
 		},
 		{
-			name:     "release version",
-			version:  "1.0.0",
-			want:     "1.0.0",
+			name:    "release version",
+			version: "1.0.0",
+			want:    "1.0.0",
 		},
 	}
 
@@ -48,7 +48,7 @@ func TestDetailedInfo(t *testing.T) {
 	origVersion := Version
 	origCommit := Commit
 	origDate := Date
-	
+
 	// Restore original values after test
 	defer func() {
 		Version = origVersion
@@ -58,25 +58,25 @@ func TestDetailedInfo(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name     string
-		version  string
-		commit   string
-		date     string
-		want     string
+		name    string
+		version string
+		commit  string
+		date    string
+		want    string
 	}{
 		{
-			name:     "default values",
-			version:  "dev",
-			commit:   "none",
-			date:     "unknown",
-			want:     "Version: dev\nCommit: none\nBuild Date: unknown",
+			name:    "default values",
+			version: "dev",
+			commit:  "none",
+			date:    "unknown",
+			want:    "Version: dev\nCommit: none\nBuild Date: unknown",
 		},
 		{
-			name:     "release values",
-			version:  "1.0.0",
-			commit:   "abc123",
-			date:     "2024-01-01",
-			want:     "Version: 1.0.0\nCommit: abc123\nBuild Date: 2024-01-01",
+			name:    "release values",
+			version: "1.0.0",
+			commit:  "abc123",
+			date:    "2024-01-01",
+			want:    "Version: 1.0.0\nCommit: abc123\nBuild Date: 2024-01-01",
 		},
 	}
 
@@ -90,4 +90,4 @@ func TestDetailedInfo(t *testing.T) {
 			}
 		})
 	}
-} 
+}
