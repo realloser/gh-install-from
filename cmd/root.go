@@ -6,14 +6,11 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
-	"github.com/realloser/gh-install-from/pkg/semver"
+	"github.com/realloser/gh-install-from/pkg/update"
 	"github.com/realloser/gh-install-from/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -50,7 +47,20 @@ Examples:
 		if verbose {
 			log.Init(true)
 		}
-		if err := checkForUpdates(); err != nil {
+
+		client, err := github.NewGhCliClient()
+		if err != nil {
+			log.Debug("failed to create GitHub client:", err)
+			return
+		}
+
+		checker, err := update.NewChecker(client, "realloser/gh-install-from")
+		if err != nil {
+			log.Debug("failed to create update checker:", err)
+			return
+		}
+
+		if err := checker.Check(noVersionCheck); err != nil {
 			log.Debug("failed to check for updates:", err)
 		}
 	},
@@ -97,90 +107,4 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "V", false, "enable verbose output")
 	rootCmd.PersistentFlags().BoolVar(&noVersionCheck, "no-version-check", false, "disable automatic version check")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "print version information")
-}
-
-func checkForUpdates() error {
-	if noVersionCheck {
-		return nil
-	}
-
-	file := filepath.Join(getCacheDir(), "last_check")
-	if shouldCheck(file) {
-		if err := os.MkdirAll(getCacheDir(), 0750); err != nil {
-			return fmt.Errorf("failed to create cache directory: %w", err)
-		}
-		if err := os.WriteFile(file, []byte(time.Now().Format(time.RFC3339)), 0600); err != nil {
-			return fmt.Errorf("failed to write last check time: %w", err)
-		}
-
-		// Check for updates
-		client, err := github.NewGhCliClient()
-		if err != nil {
-			return fmt.Errorf("failed to create GitHub client: %w", err)
-		}
-
-		release, err := client.GetLatestRelease("realloser/gh-install-from")
-		if err != nil {
-			return fmt.Errorf("failed to check for updates: %w", err)
-		}
-
-		// Compare versions and notify if update available
-		currentVersion := version.Version
-		if currentVersion == "dev" {
-			log.Debug("skipping version check for development version")
-			return nil
-		}
-
-		latestVersion := release.TagName
-		if latestVersion == "" {
-			return fmt.Errorf("latest version is empty")
-		}
-
-		// Strip 'v' prefix if present for consistent comparison
-		currentVersion = strings.TrimPrefix(currentVersion, "v")
-		latestVersion = strings.TrimPrefix(latestVersion, "v")
-
-		// Parse versions for comparison
-		current, err := semver.Parse(currentVersion)
-		if err != nil {
-			return fmt.Errorf("failed to parse current version: %w", err)
-		}
-
-		latest, err := semver.Parse(latestVersion)
-		if err != nil {
-			return fmt.Errorf("failed to parse latest version: %w", err)
-		}
-
-		// Compare versions
-		if latest.GT(current) {
-			fmt.Printf("\nA new version of gh-install-from is available: %s → %s\n", currentVersion, latestVersion)
-			fmt.Printf("Run 'gh extension upgrade gh-install-from' to upgrade\n\n")
-		}
-	}
-	return nil
-}
-
-func getCacheDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return os.TempDir()
-	}
-	return filepath.Join(home, ".cache", "gh-install-from")
-}
-
-func getLastCheckTime() (time.Time, error) {
-	file := filepath.Join(getCacheDir(), "last_check")
-	data, err := os.ReadFile(file)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return time.Parse(time.RFC3339, string(data))
-}
-
-func shouldCheck(file string) bool {
-	lastCheck, err := getLastCheckTime()
-	if err != nil {
-		return true // If we can't read the last check time, do check
-	}
-	return time.Since(lastCheck) >= 24*time.Hour
 }
