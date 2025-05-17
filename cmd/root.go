@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
+	"github.com/realloser/gh-install-from/pkg/semver"
 	"github.com/realloser/gh-install-from/pkg/version"
 	"github.com/spf13/cobra"
 )
@@ -117,13 +119,43 @@ func checkForUpdates() error {
 			return fmt.Errorf("failed to create GitHub client: %w", err)
 		}
 
-		_, err = client.GetLatestRelease("realloser/gh-install-from")
+		release, err := client.GetLatestRelease("realloser/gh-install-from")
 		if err != nil {
 			return fmt.Errorf("failed to check for updates: %w", err)
 		}
 
 		// Compare versions and notify if update available
-		// ... rest of the function unchanged ...
+		currentVersion := version.Version
+		if currentVersion == "dev" {
+			log.Debug("skipping version check for development version")
+			return nil
+		}
+
+		latestVersion := release.TagName
+		if latestVersion == "" {
+			return fmt.Errorf("latest version is empty")
+		}
+
+		// Strip 'v' prefix if present for consistent comparison
+		currentVersion = strings.TrimPrefix(currentVersion, "v")
+		latestVersion = strings.TrimPrefix(latestVersion, "v")
+
+		// Parse versions for comparison
+		current, err := semver.Parse(currentVersion)
+		if err != nil {
+			return fmt.Errorf("failed to parse current version: %w", err)
+		}
+
+		latest, err := semver.Parse(latestVersion)
+		if err != nil {
+			return fmt.Errorf("failed to parse latest version: %w", err)
+		}
+
+		// Compare versions
+		if latest.GT(current) {
+			fmt.Printf("\nA new version of gh-install-from is available: %s → %s\n", currentVersion, latestVersion)
+			fmt.Printf("Run 'gh extension upgrade gh-install-from' to upgrade\n\n")
+		}
 	}
 	return nil
 }
