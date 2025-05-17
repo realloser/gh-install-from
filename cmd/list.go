@@ -5,36 +5,19 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
+	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/spf13/cobra"
 )
 
 var (
-	// Styles
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7B2CBF")).
-			MarginBottom(1)
-
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#4361EE"))
-
-	cellStyle = lipgloss.NewStyle().
-			PaddingRight(2)
-
-	versionStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#4CAF50"))
-
-	repoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF7F50"))
-
-	hostStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9B59B6"))
+	baseStyle = lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
 
 	noMetaStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#808080")).
@@ -75,43 +58,60 @@ func runList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Print title
-	fmt.Println(titleStyle.Render("Installed Binaries"))
+	log.Debug("creating table for binaries", "count", len(binaries))
 
-	// Print headers
-	headers := []string{"Name", "Version", "Repository", "Host"}
-	headerRow := make([]string, len(headers))
-	for i, header := range headers {
-		headerRow[i] = headerStyle.Render(header)
+	// Create table columns
+	columns := []table.Column{
+		{Title: "Name", Width: 25},
+		{Title: "Version", Width: 15},
+		{Title: "Repository", Width: 30},
+		{Title: "Host", Width: 20},
 	}
-	fmt.Println(strings.Join(headerRow, " "))
 
-	// Print separator
-	fmt.Println(strings.Repeat("-", 80))
-
-	// Print binaries
+	// Create table rows
+	rows := make([]table.Row, 0, len(binaries))
 	for _, bin := range binaries {
-		name := cellStyle.Render(bin.Name)
-		version := cellStyle.Render("--")
-		if bin.Version != "" {
-			version = cellStyle.Render(versionStyle.Render(bin.Version))
+		name := bin.Name
+		if bin.OriginalBinary != "" && bin.OriginalBinary != bin.Name {
+			name = fmt.Sprintf("%s (%s)", bin.Name, bin.OriginalBinary)
 		}
-		repo := cellStyle.Render("--")
-		if bin.Repository != "" {
-			repo = cellStyle.Render(repoStyle.Render(bin.Repository))
+		version := bin.Version
+		if version == "" {
+			version = "--"
 		}
-		host := "--"
-		if bin.Host != "" {
-			host = hostStyle.Render(bin.Host)
+		repo := bin.Repository
+		if repo == "" {
+			repo = "--"
 		}
-
-		fmt.Printf("%s %s %s %s\n",
-			name,
-			version,
-			repo,
-			host,
-		)
+		host := bin.Host
+		if host == "" {
+			host = "--"
+		}
+		log.Debug("adding row to table", "name", name, "version", version, "repo", repo, "host", host)
+		rows = append(rows, table.Row{name, version, repo, host})
 	}
 
+	log.Debug("created table rows", "count", len(rows))
+
+	// Create and style the table
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(false),
+		table.WithHeight(len(rows)+1), // Add 1 for header row
+	)
+
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(true)
+	t.SetStyles(s)
+
+	log.Debug("created table", "height", len(rows)+1, "focused", false)
+
+	// Render the table directly
+	fmt.Println(baseStyle.Render(t.View()))
 	return nil
 }

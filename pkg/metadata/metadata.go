@@ -10,10 +10,11 @@ import (
 
 // BinaryMetadata stores information about an installed binary
 type BinaryMetadata struct {
-	GHHost     string `json:"gh_host"`     // GitHub host (e.g., "github.com")
-	Repository string `json:"repository"`  // Repository in owner/repo format
-	Version    string `json:"version"`     // Installed version (tag or commit)
-	BinaryPath string `json:"binary_path"` // Path to the installed binary
+	GHHost         string `json:"gh_host"`         // GitHub host (e.g., "github.com")
+	Repository     string `json:"repository"`      // Repository in owner/repo format
+	Version        string `json:"version"`         // Installed version (tag or commit)
+	BinaryPath     string `json:"binary_path"`     // Path to the installed binary
+	OriginalBinary string `json:"original_binary"` // Original name of the binary in the archive
 }
 
 // Store saves metadata for an installed binary
@@ -26,7 +27,7 @@ func Store(metadata *BinaryMetadata) error {
 		return fmt.Errorf("binary path cannot be empty")
 	}
 
-	metadataDir, err := getMetadataDir()
+	metadataDir, err := GetMetadataDir()
 	if err != nil {
 		return fmt.Errorf("failed to get metadata directory: %w", err)
 	}
@@ -60,7 +61,7 @@ func Load(binaryPath string) (*BinaryMetadata, error) {
 		return nil, fmt.Errorf("binary path cannot be empty")
 	}
 
-	metadataDir, err := getMetadataDir()
+	metadataDir, err := GetMetadataDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get metadata directory: %w", err)
 	}
@@ -93,7 +94,7 @@ func Delete(binaryPath string) error {
 		return fmt.Errorf("binary path cannot be empty")
 	}
 
-	metadataDir, err := getMetadataDir()
+	metadataDir, err := GetMetadataDir()
 	if err != nil {
 		return fmt.Errorf("failed to get metadata directory: %w", err)
 	}
@@ -113,8 +114,8 @@ func Delete(binaryPath string) error {
 	return nil
 }
 
-// getMetadataDir returns the directory where metadata files are stored
-func getMetadataDir() (string, error) {
+// GetMetadataDir returns the directory where metadata files are stored
+func GetMetadataDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)

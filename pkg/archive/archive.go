@@ -12,21 +12,25 @@ import (
 )
 
 // ExtractFile extracts a file from a compressed archive or copies a regular file
-func ExtractFile(src, dest string) error {
+// Returns the path of the extracted binary file
+func ExtractFile(src, dest string) (string, error) {
 	switch {
 	case isGzipFile(src):
 		return extractGzipFile(src, dest)
 	case isZipFile(src):
 		return extractZipFile(src, dest)
 	default:
-		return copyFile(src, dest)
+		if err := copyFile(src, dest); err != nil {
+			return "", err
+		}
+		return dest, nil
 	}
 }
 
-func extractGzipFile(src, dest string) error {
+func extractGzipFile(src, dest string) (string, error) {
 	file, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("failed to open gzip file: %w", err)
+		return "", fmt.Errorf("failed to open gzip file: %w", err)
 	}
 	defer func() {
 		if cerr := file.Close(); cerr != nil {
@@ -38,7 +42,7 @@ func extractGzipFile(src, dest string) error {
 
 	gzr, err := gzip.NewReader(file)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
+		return "", fmt.Errorf("failed to create gzip reader: %w", err)
 	}
 	defer func() {
 		if cerr := gzr.Close(); cerr != nil {
@@ -49,40 +53,52 @@ func extractGzipFile(src, dest string) error {
 	}()
 
 	tr := tar.NewReader(gzr)
+	var extractedBinary string
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
-			return fmt.Errorf("binary not found in archive")
+			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return "", fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		if header.Typeflag == tar.TypeReg {
-			out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-			if err != nil {
-				return fmt.Errorf("failed to create destination file: %w", err)
-			}
-			defer func() {
-				if cerr := out.Close(); cerr != nil {
-					if err == nil {
-						err = fmt.Errorf("failed to close output file: %w", cerr)
-					}
-				}
-			}()
+		// Skip if the entry is empty or just a directory
+		if header.Name == "" || header.Typeflag == tar.TypeDir {
+			continue
+		}
 
-			if _, err := io.Copy(out, tr); err != nil {
-				return fmt.Errorf("failed to extract file: %w", err)
-			}
-			return nil
+		// Create the file
+		outPath := filepath.Join(dest, filepath.Base(header.Name))
+		out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+		if err != nil {
+			return "", fmt.Errorf("failed to create file %s: %w", outPath, err)
+		}
+
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			return "", fmt.Errorf("failed to extract file %s: %w", outPath, err)
+		}
+		out.Close()
+
+		// If this file is executable, it's likely our binary
+		if header.Mode&0111 != 0 {
+			extractedBinary = outPath
 		}
 	}
+
+	if extractedBinary == "" {
+		return "", fmt.Errorf("no executable binary found in archive")
+	}
+
+	return extractedBinary, nil
 }
 
-func extractZipFile(src, dest string) error {
+func extractZipFile(src, dest string) (string, error) {
 	r, err := zip.OpenReader(src)
 	if err != nil {
-		return fmt.Errorf("failed to open zip file: %w", err)
+		return "", fmt.Errorf("failed to open zip file: %w", err)
 	}
 	defer func() {
 		if cerr := r.Close(); cerr != nil {
@@ -92,6 +108,8 @@ func extractZipFile(src, dest string) error {
 		}
 	}()
 
+	var extractedBinary string
+
 	for _, f := range r.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -99,33 +117,34 @@ func extractZipFile(src, dest string) error {
 
 		rc, err := f.Open()
 		if err != nil {
-			return fmt.Errorf("failed to open file in zip: %w", err)
+			return "", fmt.Errorf("failed to open file in zip: %w", err)
 		}
 
-		out, err := os.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+		outPath := filepath.Join(dest, filepath.Base(f.Name))
+		out, err := os.OpenFile(outPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
 		if err != nil {
 			rc.Close()
-			return fmt.Errorf("failed to create destination file: %w", err)
+			return "", fmt.Errorf("failed to create file %s: %w", outPath, err)
 		}
 
 		_, err = io.Copy(out, rc)
+		rc.Close()
+		out.Close()
 		if err != nil {
-			rc.Close()
-			out.Close()
-			return fmt.Errorf("failed to extract file: %w", err)
+			return "", fmt.Errorf("failed to extract file %s: %w", outPath, err)
 		}
 
-		if err := rc.Close(); err != nil {
-			out.Close()
-			return fmt.Errorf("failed to close zip file: %w", err)
+		// If this file is executable, it's likely our binary
+		if f.Mode()&0111 != 0 {
+			extractedBinary = outPath
 		}
-		if err := out.Close(); err != nil {
-			return fmt.Errorf("failed to close output file: %w", err)
-		}
-		return nil
 	}
 
-	return fmt.Errorf("no files found in zip archive")
+	if extractedBinary == "" {
+		return "", fmt.Errorf("no executable binary found in archive")
+	}
+
+	return extractedBinary, nil
 }
 
 func copyFile(src, dest string) error {
