@@ -4,12 +4,36 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/metadata"
 )
+
+// mockArchive is used to replace the archive package during testing
+type mockArchive struct{}
+
+func (m *mockArchive) ExtractFile(src, destDir string) (string, error) {
+	// Create a mock binary in the destination directory
+	binaryName := filepath.Base(src)
+	binaryPath := filepath.Join(destDir, binaryName)
+
+	// Create parent directory if it doesn't exist
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", err
+	}
+
+	// Create a mock binary file
+	content := []byte("#!/bin/sh\necho 'test binary'\n")
+	if err := os.WriteFile(binaryPath, content, 0755); err != nil {
+		return "", err
+	}
+
+	return binaryPath, nil
+}
 
 // mockClient implements github.Client for testing
 type mockClient struct {
@@ -27,8 +51,15 @@ func (m *mockClient) DownloadAsset(url, destPath string) error {
 	if m.downloadAssetErr != nil {
 		return m.downloadAssetErr
 	}
+
+	// Create parent directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return err
+	}
+
 	// Create a dummy file for testing
-	return os.WriteFile(destPath, []byte("test binary"), 0755)
+	content := []byte("#!/bin/sh\necho 'test binary'\n")
+	return os.WriteFile(destPath, content, 0755)
 }
 
 func (m *mockClient) GetHost() string {
@@ -194,11 +225,16 @@ func TestManager_Install(t *testing.T) {
 	os.Setenv("HOME", tmpHome)
 	defer os.Setenv("HOME", oldHome)
 
+	// Get current OS/arch for test assets
+	osName := runtime.GOOS
+	archName := runtime.GOARCH
+
 	tests := []struct {
 		name      string
 		repo      string
 		mockSetup func() *mockClient
 		wantErr   bool
+		errCheck  func(error) bool // Optional error check function
 	}{
 		{
 			name: "successful installation",
@@ -210,8 +246,53 @@ func TestManager_Install(t *testing.T) {
 						TagName: "v1.0.0",
 						Assets: []github.Asset{
 							{
-								Name:               "test-binary_linux_amd64",
+								Name:               fmt.Sprintf("test-binary_%s_%s", osName, archName),
 								BrowserDownloadURL: "https://example.com/test-binary",
+							},
+						},
+					},
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "skip gh extension",
+			repo: "test/gh-extension",
+			mockSetup: func() *mockClient {
+				return &mockClient{
+					host: "github.com",
+					latestRelease: &github.Release{
+						TagName: "v1.0.0",
+						Assets: []github.Asset{
+							{
+								Name:               fmt.Sprintf("gh-extension_%s_%s", osName, archName),
+								BrowserDownloadURL: "https://example.com/gh-extension",
+							},
+						},
+					},
+				}
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "GitHub CLI extensions should be installed using 'gh extension install' instead")
+			},
+		},
+		{
+			name: "skip gh extension but install regular binary",
+			repo: "test/mixed-binaries",
+			mockSetup: func() *mockClient {
+				return &mockClient{
+					host: "github.com",
+					latestRelease: &github.Release{
+						TagName: "v1.0.0",
+						Assets: []github.Asset{
+							{
+								Name:               fmt.Sprintf("gh-extension_%s_%s", osName, archName),
+								BrowserDownloadURL: "https://example.com/gh-extension",
+							},
+							{
+								Name:               fmt.Sprintf("regular-binary_%s_%s", osName, archName),
+								BrowserDownloadURL: "https://example.com/regular-binary",
 							},
 						},
 					},
@@ -259,7 +340,7 @@ func TestManager_Install(t *testing.T) {
 						TagName: "v1.0.0",
 						Assets: []github.Asset{
 							{
-								Name:               "test-binary_linux_amd64",
+								Name:               fmt.Sprintf("test-binary_%s_%s", osName, archName),
 								BrowserDownloadURL: "https://example.com/test-binary",
 							},
 						},
@@ -274,7 +355,7 @@ func TestManager_Install(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockClient := tt.mockSetup()
-			manager, err := New(mockClient)
+			manager, err := NewWithArchiver(mockClient, &mockArchive{})
 			if err != nil {
 				t.Fatalf("failed to create manager: %v", err)
 			}
@@ -284,9 +365,16 @@ func TestManager_Install(t *testing.T) {
 				t.Errorf("Install() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
+			if tt.errCheck != nil && err != nil {
+				if !tt.errCheck(err) {
+					t.Errorf("Install() error = %v, did not match expected error condition", err)
+				}
+			}
+
 			if !tt.wantErr {
 				// Verify binary was installed
-				binaryPath := manager.GetBinaryPath("test-binary_linux_amd64")
+				binaryName := filepath.Base(tt.repo)
+				binaryPath := manager.GetBinaryPath(binaryName)
 				if _, err := os.Stat(binaryPath); err != nil {
 					t.Error("binary file was not created")
 				}

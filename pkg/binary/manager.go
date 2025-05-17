@@ -18,8 +18,14 @@ import (
 
 // Manager handles binary management operations
 type Manager struct {
-	binDir string
-	client github.Client
+	binDir  string
+	client  github.Client
+	archive archiver
+}
+
+// archiver is an interface for archive operations
+type archiver interface {
+	ExtractFile(src, destDir string) (string, error)
 }
 
 // New creates a new binary Manager
@@ -35,8 +41,28 @@ func New(client github.Client) (*Manager, error) {
 	}
 
 	return &Manager{
-		binDir: binDir,
-		client: client,
+		binDir:  binDir,
+		client:  client,
+		archive: &archive.Archiver{},
+	}, nil
+}
+
+// NewWithArchiver creates a new binary Manager with a custom archiver
+func NewWithArchiver(client github.Client, archive archiver) (*Manager, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	binDir := filepath.Join(homeDir, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create bin directory: %w", err)
+	}
+
+	return &Manager{
+		binDir:  binDir,
+		client:  client,
+		archive: archive,
 	}, nil
 }
 
@@ -72,7 +98,7 @@ func (m *Manager) Install(repo string) error {
 	}
 
 	// Extract the archive to the temp directory
-	extractedPath, err := archive.ExtractFile(tmpPath, tmpDir)
+	extractedPath, err := m.archive.ExtractFile(tmpPath, tmpDir)
 	if err != nil {
 		return fmt.Errorf("failed to extract file: %w", err)
 	}
@@ -172,6 +198,9 @@ func (m *Manager) findMatchingAsset(assets []github.Asset) (*github.Asset, error
 	possibleArch := archMap[runtime.GOARCH]
 	possibleOS := osMap[runtime.GOOS]
 
+	var matchingAssets []github.Asset
+	var ghExtensions []string
+
 	for _, asset := range assets {
 		name := strings.ToLower(asset.Name)
 
@@ -181,6 +210,12 @@ func (m *Manager) findMatchingAsset(assets []github.Asset) (*github.Asset, error
 			strings.HasSuffix(name, ".asc") ||
 			strings.HasSuffix(name, ".sig") ||
 			strings.HasSuffix(name, ".md5") {
+			continue
+		}
+
+		// Track GitHub CLI extensions
+		if strings.HasPrefix(name, "gh-") {
+			ghExtensions = append(ghExtensions, asset.Name)
 			continue
 		}
 
@@ -201,13 +236,30 @@ func (m *Manager) findMatchingAsset(assets []github.Asset) (*github.Asset, error
 			}
 		}
 
-		// If both OS and architecture match, this is our asset
+		// If both OS and architecture match, add to matching assets
 		if matchesOS && matchesArch {
-			return &asset, nil
+			matchingAssets = append(matchingAssets, asset)
 		}
 	}
 
-	return nil, fmt.Errorf("no matching binary found for %s", osArch)
+	// If we found matching assets, return the first one
+	if len(matchingAssets) > 0 {
+		return &matchingAssets[0], nil
+	}
+
+	// Construct detailed error message
+	var errMsg strings.Builder
+	errMsg.WriteString(fmt.Sprintf("no matching binary found for %s\n", osArch))
+
+	if len(ghExtensions) > 0 {
+		errMsg.WriteString("\nFound GitHub CLI extensions that were skipped:\n")
+		for _, ext := range ghExtensions {
+			errMsg.WriteString(fmt.Sprintf("- %s\n", ext))
+		}
+		errMsg.WriteString("\nGitHub CLI extensions should be installed using 'gh extension install' instead.\n")
+	}
+
+	return nil, fmt.Errorf(errMsg.String())
 }
 
 // findBinaryByRepo returns the binary name and metadata for a given repository
@@ -280,9 +332,11 @@ func (m *Manager) Remove(nameOrRepo string) error {
 			log.Debug("failed to remove metadata", "error", err)
 			// Don't fail if metadata removal fails
 		}
+		fmt.Println(ui.FormatActionMessage("Removed", ui.FormatBinaryInfo(binaryName, binaryPath, meta.Version)))
+	} else {
+		fmt.Println(ui.FormatActionMessage("Removed", ui.FormatBinaryInfo(binaryName, binaryPath, "")))
 	}
 
-	fmt.Println(ui.FormatActionMessage("Removed", ui.FormatBinaryInfo(binaryName, binaryPath, meta.Version)))
 	return nil
 }
 

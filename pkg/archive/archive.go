@@ -11,9 +11,12 @@ import (
 	"strings"
 )
 
+// Archiver handles archive operations
+type Archiver struct{}
+
 // ExtractFile extracts a file from a compressed archive or copies a regular file
 // Returns the path of the extracted binary file
-func ExtractFile(src, dest string) (string, error) {
+func (a *Archiver) ExtractFile(src, dest string) (string, error) {
 	switch {
 	case isGzipFile(src):
 		return extractGzipFile(src, dest)
