@@ -1,3 +1,6 @@
+/*
+Copyright © 2025 Martyn Messerli
+*/
 package version
 
 // These variables are set during build time using -ldflags

@@ -1,3 +1,6 @@
+/*
+Copyright © 2025 Martyn Messerli
+*/
 package cmd
 
 import (

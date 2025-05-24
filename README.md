@@ -2,6 +2,8 @@
 
 A GitHub CLI extension to install binaries from GitHub releases. It automatically detects the appropriate binary for your OS and architecture, handles compressed files, and manages updates.
 
+> Maintained by [Martyn Messerli](https://github.com/realloser)
+
 ## ⚠️ Security Notice
 
 This tool helps you download and install binaries from GitHub releases. Please note:
