@@ -15,6 +15,37 @@ This tool helps you download and install binaries from GitHub releases. Please n
   - Review the repository's security advisories
   - Consider using package managers for well-known software
 
+## Why Use This Tool?
+
+### For Individual Users
+- 🔍 **Automatic Detection**: Automatically finds the right binary for your system
+- 📦 **Compression Support**: Handles .tar.gz, .tgz, and .zip files
+- 🔄 **Version Management**: Easy updates and version tracking
+- 📊 **User Experience**: Progress bars and detailed logging
+- 🚀 **Cross-Platform**: Works on macOS, Linux, and Windows
+
+### For Enterprises
+- 🔒 **GitHub Enterprise Support**: Works seamlessly with [GitHub Enterprise](https://github.com/enterprise)
+- 📝 **Audit Trail**: Maintains detailed installation records
+- 🔐 **Security**: Implements enterprise-grade security measures
+- 🏢 **Internal Tools**: Perfect for distributing internal tools via GitHub releases
+- 📋 **Compliance**: Supports enterprise security policies and version control
+
+### Why Not Use Package Managers?
+While package managers like [Homebrew](https://brew.sh), [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/), or [apt](https://wiki.debian.org/Apt) are great for public software, they have limitations:
+- Internal tools can't be published to public repositories
+- Enterprise tools often can't be shared publicly
+- Custom builds need to be distributed securely
+- Version control is more complex
+- Approval processes can be lengthy
+
+`gh-install-from` solves these issues by:
+- Installing directly from GitHub releases
+- Supporting private repositories
+- Working with GitHub Enterprise
+- Maintaining version history
+- Providing audit trails
+
 ## Features
 
 - 🔍 Automatic OS and architecture detection
@@ -78,9 +109,9 @@ gh install-from --verbose BurntSushi/ripgrep
 - Git
 
 Optional tools (automatically installed when needed):
-- golangci-lint
-- gosec
-- goimports
+- [golangci-lint](https://golangci-lint.run/)
+- [gosec](https://github.com/securego/gosec)
+- [goimports](https://pkg.go.dev/golang.org/x/tools/cmd/goimports)
 
 ### Building
 
@@ -164,8 +195,8 @@ The GitHub Actions workflow will automatically:
 The following security measures apply to the `gh-install-from` tool itself:
 
 1. **Static Analysis**:
-   - Code security scanning with gosec
-   - Dependency vulnerability checking with nancy
+   - Code security scanning with [gosec](https://github.com/securego/gosec)
+   - Dependency vulnerability checking with [nancy](https://github.com/sonatype-nexus-community/nancy)
    - Regular automated security updates
 
 2. **Build Security**:
