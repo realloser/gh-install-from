@@ -3,15 +3,15 @@ package archive
 import (
 	"archive/tar"
 	"archive/zip"
-	"bytes"
 	"compress/gzip"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestExtractFile(t *testing.T) {
+	archiver := &Archiver{}
 	tests := []struct {
 		name     string
 		setup    func(t *testing.T) (string, string)
@@ -24,6 +24,9 @@ func TestExtractFile(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				src := createTestTarGz(t, "testbin", "#!/bin/sh\necho test")
 				dst := filepath.Join(t.TempDir(), "extracted-bin")
+				if err := os.MkdirAll(dst, 0755); err != nil {
+					t.Fatal(err)
+				}
 				return src, dst
 			},
 			wantErr: false,
@@ -50,6 +53,9 @@ func TestExtractFile(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				src := createTestZip(t, "testbin.exe", "test content")
 				dst := filepath.Join(t.TempDir(), "extracted-bin.exe")
+				if err := os.MkdirAll(dst, 0755); err != nil {
+					t.Fatal(err)
+				}
 				return src, dst
 			},
 			wantErr: false,
@@ -76,6 +82,9 @@ func TestExtractFile(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				src := createTestFile(t, "test content")
 				dst := filepath.Join(t.TempDir(), "copied-bin")
+				if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+					t.Fatal(err)
+				}
 				return src, dst
 			},
 			wantErr: false,
@@ -102,6 +111,9 @@ func TestExtractFile(t *testing.T) {
 			setup: func(t *testing.T) (string, string) {
 				src := filepath.Join(t.TempDir(), "invalid.tar.gz")
 				dst := filepath.Join(t.TempDir(), "output")
+				if err := os.MkdirAll(dst, 0755); err != nil {
+					t.Fatal(err)
+				}
 				err := os.WriteFile(src, []byte("invalid tar.gz content"), 0644)
 				if err != nil {
 					t.Fatal(err)
@@ -127,7 +139,8 @@ func TestExtractFile(t *testing.T) {
 			defer tt.cleanup(t, srcPath)
 
 			// Test extraction
-			if err := ExtractFile(srcPath, destPath); (err != nil) != tt.wantErr {
+			_, err := archiver.ExtractFile(srcPath, destPath)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("ExtractFile() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
@@ -213,24 +226,33 @@ func createTestZip(t *testing.T, name, content string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tmpfile.Close()
 
 	// Create zip writer
 	zw := zip.NewWriter(tmpfile)
 
-	// Create file in zip
-	w, err := zw.Create(name)
+	// Create file in zip with executable permissions
+	f, err := zw.CreateHeader(&zip.FileHeader{
+		Name:               name,
+		Method:             zip.Deflate,
+		UncompressedSize64: uint64(len(content)),
+		Modified:           time.Now(),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Write content
-	if _, err := io.Copy(w, bytes.NewBufferString(content)); err != nil {
+	if _, err := f.Write([]byte(content)); err != nil {
 		t.Fatal(err)
 	}
 
 	// Close zip writer
 	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Close file
+	if err := tmpfile.Close(); err != nil {
 		t.Fatal(err)
 	}
 

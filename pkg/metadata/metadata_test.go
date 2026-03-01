@@ -40,7 +40,7 @@ func TestMetadata(t *testing.T) {
 		}
 
 		// Verify metadata file exists and contains correct data
-		metadataDir, err := getMetadataDir()
+		metadataDir, err := GetMetadataDir()
 		if err != nil {
 			t.Fatalf("failed to get metadata directory: %v", err)
 		}
@@ -102,7 +102,7 @@ func TestMetadata(t *testing.T) {
 		}
 
 		// Verify metadata file is deleted
-		metadataDir, err := getMetadataDir()
+		metadataDir, err := GetMetadataDir()
 		if err != nil {
 			t.Fatalf("failed to get metadata directory: %v", err)
 		}

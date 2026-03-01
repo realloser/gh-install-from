@@ -52,8 +52,8 @@ func newGhCliClient() (Client, error) {
 		if len(lines) > 0 {
 			// The line format is typically: "Logged in to github.com as USERNAME"
 			fields := strings.Fields(lines[0])
-			if len(fields) >= 3 && fields[2] != "" {
-				host = fields[2]
+			if len(fields) >= 4 && fields[3] != "" {
+				host = fields[3]
 			}
 		}
 	}
@@ -164,4 +164,13 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 func isValidRepo(repo string) bool {
 	// Simple check for now, could be more sophisticated
 	return len(repo) > 0 && repo[0] != '/' && repo[len(repo)-1] != '/' && len(repo) < 256
+}
+
+// GetLatestRelease is a convenience function that creates a new client and gets the latest release
+func GetLatestRelease(repo string) (*Release, error) {
+	client, err := NewGhCliClient()
+	if err != nil {
+		return nil, err
+	}
+	return client.GetLatestRelease(repo)
 }

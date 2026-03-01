@@ -9,7 +9,7 @@ import (
 	"github.com/realloser/gh-install-from/pkg/metadata"
 )
 
-func TestRunDelete(t *testing.T) {
+func TestRunRemove(t *testing.T) {
 	// Initialize logger for tests
 	log.Init(false)
 
@@ -80,10 +80,10 @@ func TestRunDelete(t *testing.T) {
 			// Run setup
 			tt.setup(t, binDir)
 
-			// Run delete command
-			err := runDelete(nil, []string{tt.binaryName})
+			// Run remove command
+			err := runRemove(nil, []string{tt.binaryName})
 			if (err != nil) != tt.wantErr {
-				t.Errorf("runDelete() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("runRemove() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
