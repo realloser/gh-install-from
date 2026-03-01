@@ -5,7 +5,6 @@ package cmd
 
 import (
 	"github.com/realloser/gh-install-from/pkg/binary"
-	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/spf13/cobra"
 )
 
@@ -15,7 +14,7 @@ var removeCmd = &cobra.Command{
 	Short: "Remove an installed binary",
 	Long: `Remove an installed binary and its metadata.
 You can specify either the binary name or the repository name (owner/repo).
-The binary will be removed from ~/.local/bin and its metadata will be cleaned up.
+The binary will be removed from ~/.gh-install-from/bin and its metadata will be cleaned up.
 
 Examples:
   gh install-from remove ripgrep      # Remove by binary name
@@ -31,18 +30,10 @@ func init() {
 func runRemove(cmd *cobra.Command, args []string) error {
 	nameOrRepo := args[0]
 
-	// Create a GitHub client
-	client, err := github.NewGhCliClient()
+	manager, err := binary.NewManager(nil)
 	if err != nil {
 		return err
 	}
 
-	// Create a binary manager
-	manager, err := binary.New(client)
-	if err != nil {
-		return err
-	}
-
-	// Use the manager to remove the binary
 	return manager.Remove(nameOrRepo)
 }

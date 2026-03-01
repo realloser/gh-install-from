@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/realloser/gh-install-from/pkg/binary"
-	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/spf13/cobra"
 )
@@ -38,12 +37,7 @@ func init() {
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	client, err := github.NewGhCliClient()
-	if err != nil {
-		return fmt.Errorf("failed to create GitHub client: %w", err)
-	}
-
-	manager, err := binary.New(client)
+	manager, err := binary.NewManager(nil)
 	if err != nil {
 		return fmt.Errorf("failed to create binary manager: %w", err)
 	}

@@ -31,6 +31,9 @@ type Client interface {
 	GetHost() string
 }
 
+// Ensure ghCliClient implements Client
+var _ Client = (*ghCliClient)(nil)
+
 // ghCliClient implements the Client interface using gh cli commands
 type ghCliClient struct {
 	host string

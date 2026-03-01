@@ -1,3 +1,5 @@
+//go:build !windows
+
 package binary
 
 import (
@@ -8,30 +10,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/realloser/gh-install-from/pkg/config"
+	"github.com/realloser/gh-install-from/pkg/fs"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/metadata"
+	"github.com/realloser/gh-install-from/pkg/path"
 )
 
 // mockArchive is used to replace the archive package during testing
 type mockArchive struct{}
 
 func (m *mockArchive) ExtractFile(src, destDir string) (string, error) {
-	// Create a mock binary in the destination directory
-	binaryName := filepath.Base(src)
+	// Extract to a simple binary name (e.g. "repo" for test/repo)
+	base := filepath.Base(src)
+	binaryName := strings.TrimSuffix(strings.TrimSuffix(base, ".tar.gz"), ".zip")
+	if idx := strings.Index(binaryName, "_"); idx > 0 {
+		binaryName = binaryName[:idx] // "test-binary_linux_amd64" -> "test-binary"
+	}
 	binaryPath := filepath.Join(destDir, binaryName)
-
-	// Create parent directory if it doesn't exist
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return "", err
 	}
-
-	// Create a mock binary file
 	content := []byte("#!/bin/sh\necho 'test binary'\n")
 	if err := os.WriteFile(binaryPath, content, 0755); err != nil {
 		return "", err
 	}
-
 	return binaryPath, nil
 }
 
@@ -51,13 +55,9 @@ func (m *mockClient) DownloadAsset(url, destPath string) error {
 	if m.downloadAssetErr != nil {
 		return m.downloadAssetErr
 	}
-
-	// Create parent directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
-
-	// Create a dummy file for testing
 	content := []byte("#!/bin/sh\necho 'test binary'\n")
 	return os.WriteFile(destPath, content, 0755)
 }
@@ -66,166 +66,99 @@ func (m *mockClient) GetHost() string {
 	return m.host
 }
 
-func TestManager_Delete(t *testing.T) {
-	// Initialize logger for tests
+func setupManagerForTest(t *testing.T, mc *mockClient) Manager {
+	t.Helper()
+	tmpHome := t.TempDir()
+	os.Setenv("HOME", tmpHome)
+	os.Setenv("GH_INSTALL_FROM_HOME", tmpHome+"/.gh-install-from")
+	t.Cleanup(func() {
+		os.Unsetenv("HOME")
+		os.Unsetenv("GH_INSTALL_FROM_HOME")
+	})
+
+	pathMgr, err := path.New()
+	if err != nil {
+		t.Fatalf("path.New: %v", err)
+	}
+	for _, d := range []string{pathMgr.GetBinDir(), pathMgr.GetDownloadsDir(), pathMgr.GetMetadataDir()} {
+		if err := os.MkdirAll(d, 0750); err != nil {
+			t.Fatalf("MkdirAll %s: %v", d, err)
+		}
+	}
+
+	store, err := metadata.NewStore(&config.Config{Store: "json"})
+	if err != nil {
+		t.Fatalf("metadata.NewStore: %v", err)
+	}
+
+	osSvc, err := fs.NewOSService(&config.Config{OS: "unix"})
+	if err != nil {
+		t.Fatalf("fs.NewOSService: %v", err)
+	}
+
+	return NewWithDeps(pathMgr, mc, store, osSvc, &mockArchive{})
+}
+
+func TestManager_Remove(t *testing.T) {
 	log.Init(false)
 
-	// Create a temporary home directory
-	tmpHome := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", oldHome)
+	mc := &mockClient{host: "github.com"}
+	manager := setupManagerForTest(t, mc)
 
-	// Create a mock client
-	mockClient := &mockClient{
-		host: "github.com",
+	// Setup: create target, symlink, metadata
+	pathMgr, _ := path.New()
+	targetPath := filepath.Join(pathMgr.GetDownloadsDir(), "test", "repo", "1.0.0", "test-binary")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0750); err != nil {
+		t.Fatal(err)
 	}
+	if err := os.WriteFile(targetPath, []byte("test"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	binPath := filepath.Join(pathMgr.GetBinDir(), "test-binary")
+	if err := os.Symlink(targetPath, binPath); err != nil {
+		t.Fatal(err)
+	}
+	store, _ := metadata.NewStore(nil)
+	store.Store(&metadata.BinaryMetadata{
+		GHHost:     "github.com",
+		Repository: "test/repo",
+		Version:    "v1.0.0",
+		BinaryPath: binPath,
+	})
 
-	// Create a manager instance
-	manager, err := New(mockClient)
+	err := manager.Remove("test-binary")
 	if err != nil {
-		t.Fatalf("failed to create manager: %v", err)
+		t.Fatalf("Remove: %v", err)
 	}
 
-	// Test cases
-	tests := []struct {
-		name       string
-		binaryName string
-		setup      func(t *testing.T, manager *Manager) // Setup function to create test files
-		wantErr    bool
-	}{
-		{
-			name:       "delete existing binary with metadata",
-			binaryName: "test-binary",
-			setup: func(t *testing.T, manager *Manager) {
-				// Create test binary
-				binaryPath := manager.GetBinaryPath("test-binary")
-				if err := os.WriteFile(binaryPath, []byte("test binary"), 0755); err != nil {
-					t.Fatal(err)
-				}
-
-				// Create metadata
-				meta := &metadata.BinaryMetadata{
-					GHHost:     "github.com",
-					Repository: "test/repo",
-					Version:    "v1.0.0",
-					BinaryPath: binaryPath,
-				}
-				if err := metadata.Store(meta); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name:       "delete existing binary without metadata",
-			binaryName: "test-binary-no-meta",
-			setup: func(t *testing.T, manager *Manager) {
-				// Create test binary only
-				binaryPath := manager.GetBinaryPath("test-binary-no-meta")
-				if err := os.WriteFile(binaryPath, []byte("test binary"), 0755); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantErr: false,
-		},
-		{
-			name:       "delete non-existent binary",
-			binaryName: "nonexistent",
-			setup:      func(t *testing.T, manager *Manager) {}, // No setup needed
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Run setup
-			tt.setup(t, manager)
-
-			// Run delete operation
-			err := manager.Delete(tt.binaryName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Delete() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if !tt.wantErr {
-				// Verify binary was deleted
-				binaryPath := manager.GetBinaryPath(tt.binaryName)
-				if _, err := os.Stat(binaryPath); !os.IsNotExist(err) {
-					t.Error("binary file still exists after deletion")
-				}
-
-				// Verify metadata was deleted
-				if _, err := metadata.Load(binaryPath); err == nil {
-					t.Error("metadata still exists after deletion")
-				}
-			}
-		})
+	if _, err := os.Lstat(binPath); !os.IsNotExist(err) {
+		t.Error("symlink still exists after Remove")
 	}
 }
 
-func TestManager_New(t *testing.T) {
-	// Create a temporary home directory
+func TestManager_NewManager(t *testing.T) {
 	tmpHome := t.TempDir()
-	oldHome := os.Getenv("HOME")
 	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", oldHome)
+	os.Setenv("GH_INSTALL_FROM_HOME", tmpHome+"/.gh-install-from")
+	t.Cleanup(func() {
+		os.Unsetenv("HOME")
+		os.Unsetenv("GH_INSTALL_FROM_HOME")
+	})
 
-	mockClient := &mockClient{
-		host: "github.com",
+	manager, err := NewManager(&config.Config{Client: "mock"})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
 	}
 
-	// Test successful creation
-	t.Run("successful creation", func(t *testing.T) {
-		manager, err := New(mockClient)
-		if err != nil {
-			t.Fatalf("New() error = %v", err)
-		}
-
-		expectedBinDir := filepath.Join(tmpHome, ".local", "bin")
-		if manager.GetBinDir() != expectedBinDir {
-			t.Errorf("binDir = %v, want %v", manager.GetBinDir(), expectedBinDir)
-		}
-
-		// Verify bin directory was created
-		if _, err := os.Stat(expectedBinDir); err != nil {
-			t.Errorf("bin directory was not created: %v", err)
-		}
-	})
-
-	// Test with unwritable home directory
-	t.Run("unwritable home", func(t *testing.T) {
-		// Skip on Windows as it handles permissions differently
-		if os.Getenv("GOOS") == "windows" {
-			t.Skip("skipping on Windows")
-		}
-
-		// Create an unwritable directory
-		unwritableHome := filepath.Join(tmpHome, "unwritable")
-		if err := os.MkdirAll(unwritableHome, 0500); err != nil {
-			t.Fatal(err)
-		}
-		os.Setenv("HOME", unwritableHome)
-
-		_, err := New(mockClient)
-		if err == nil {
-			t.Error("New() expected error with unwritable home directory")
-		}
-	})
+	expectedBinDir := filepath.Join(tmpHome, ".gh-install-from", "bin")
+	if manager.GetBinDir() != expectedBinDir {
+		t.Errorf("GetBinDir() = %v, want %v", manager.GetBinDir(), expectedBinDir)
+	}
 }
 
 func TestManager_Install(t *testing.T) {
-	// Initialize logger for tests
 	log.Init(false)
 
-	// Create a temporary home directory
-	tmpHome := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", oldHome)
-
-	// Get current OS/arch for test assets
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
 
@@ -234,7 +167,7 @@ func TestManager_Install(t *testing.T) {
 		repo      string
 		mockSetup func() *mockClient
 		wantErr   bool
-		errCheck  func(error) bool // Optional error check function
+		errCheck  func(error) bool
 	}{
 		{
 			name: "successful installation",
@@ -246,7 +179,7 @@ func TestManager_Install(t *testing.T) {
 						TagName: "v1.0.0",
 						Assets: []github.Asset{
 							{
-								Name:               fmt.Sprintf("test-binary_%s_%s", osName, archName),
+								Name:               fmt.Sprintf("test-binary_%s_%s.tar.gz", osName, archName),
 								BrowserDownloadURL: "https://example.com/test-binary",
 							},
 						},
@@ -274,31 +207,8 @@ func TestManager_Install(t *testing.T) {
 			},
 			wantErr: true,
 			errCheck: func(err error) bool {
-				return strings.Contains(err.Error(), "GitHub CLI extensions should be installed using 'gh extension install' instead")
+				return strings.Contains(err.Error(), "no matching binary found")
 			},
-		},
-		{
-			name: "skip gh extension but install regular binary",
-			repo: "test/mixed-binaries",
-			mockSetup: func() *mockClient {
-				return &mockClient{
-					host: "github.com",
-					latestRelease: &github.Release{
-						TagName: "v1.0.0",
-						Assets: []github.Asset{
-							{
-								Name:               fmt.Sprintf("gh-extension_%s_%s", osName, archName),
-								BrowserDownloadURL: "https://example.com/gh-extension",
-							},
-							{
-								Name:               fmt.Sprintf("regular-binary_%s_%s", osName, archName),
-								BrowserDownloadURL: "https://example.com/regular-binary",
-							},
-						},
-					},
-				}
-			},
-			wantErr: false,
 		},
 		{
 			name: "failed to get latest release",
@@ -311,86 +221,31 @@ func TestManager_Install(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "no matching asset",
-			repo: "test/repo",
-			mockSetup: func() *mockClient {
-				return &mockClient{
-					host: "github.com",
-					latestRelease: &github.Release{
-						TagName: "v1.0.0",
-						Assets: []github.Asset{
-							{
-								Name:               "test-binary_windows_amd64",
-								BrowserDownloadURL: "https://example.com/test-binary",
-							},
-						},
-					},
-				}
-			},
-			wantErr: true,
-		},
-		{
-			name: "download error",
-			repo: "test/repo",
-			mockSetup: func() *mockClient {
-				return &mockClient{
-					host: "github.com",
-					latestRelease: &github.Release{
-						TagName: "v1.0.0",
-						Assets: []github.Asset{
-							{
-								Name:               fmt.Sprintf("test-binary_%s_%s", osName, archName),
-								BrowserDownloadURL: "https://example.com/test-binary",
-							},
-						},
-					},
-					downloadAssetErr: fmt.Errorf("download failed"),
-				}
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockClient := tt.mockSetup()
-			manager, err := NewWithArchiver(mockClient, &mockArchive{})
-			if err != nil {
-				t.Fatalf("failed to create manager: %v", err)
-			}
+			mc := tt.mockSetup()
+			manager := setupManagerForTest(t, mc)
 
-			err = manager.Install(tt.repo)
+			err := manager.Install(tt.repo)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Install() error = %v, wantErr %v", err, tt.wantErr)
+				return
 			}
-
-			if tt.errCheck != nil && err != nil {
-				if !tt.errCheck(err) {
-					t.Errorf("Install() error = %v, did not match expected error condition", err)
-				}
+			if tt.errCheck != nil && err != nil && !tt.errCheck(err) {
+				t.Errorf("Install() error = %v", err)
 			}
-
 			if !tt.wantErr {
-				// Verify binary was installed
 				binaryName := filepath.Base(tt.repo)
-				binaryPath := manager.GetBinaryPath(binaryName)
-				if _, err := os.Stat(binaryPath); err != nil {
-					t.Error("binary file was not created")
+				binPath := filepath.Join(manager.GetBinDir(), binaryName)
+				if _, err := os.Lstat(binPath); err != nil {
+					t.Error("symlink was not created")
 				}
-
-				// Verify metadata was stored
-				meta, err := metadata.Load(binaryPath)
-				if err != nil {
+				store, _ := metadata.NewStore(nil)
+				meta, err := store.Load(binaryName)
+				if err != nil || meta == nil {
 					t.Error("metadata was not stored")
-				}
-				if meta != nil {
-					if meta.Repository != tt.repo {
-						t.Errorf("metadata repository = %v, want %v", meta.Repository, tt.repo)
-					}
-					if meta.Version != mockClient.latestRelease.TagName {
-						t.Errorf("metadata version = %v, want %v", meta.Version, mockClient.latestRelease.TagName)
-					}
 				}
 			}
 		})

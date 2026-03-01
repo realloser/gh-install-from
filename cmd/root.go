@@ -10,6 +10,7 @@ import (
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
+	"github.com/realloser/gh-install-from/pkg/shell"
 	"github.com/realloser/gh-install-from/pkg/update"
 	"github.com/realloser/gh-install-from/pkg/version"
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ Examples:
 			log.Init(true)
 		}
 
-		client, err := github.NewGhCliClient()
+		client, err := github.NewClient(nil)
 		if err != nil {
 			log.Debug("failed to create GitHub client:", err)
 			return
@@ -77,18 +78,14 @@ Examples:
 		repo := args[0]
 		log.Debug("installing binary", "repo", repo)
 
-		client, err := github.NewGhCliClient()
-		if err != nil {
-			return fmt.Errorf("failed to create GitHub client: %w", err)
-		}
-
-		manager, err := binary.New(client)
+		manager, err := binary.NewManager(nil)
 		if err != nil {
 			return fmt.Errorf("failed to create binary manager: %w", err)
 		}
 
 		if err := manager.Install(repo); err != nil {
-			return fmt.Errorf("failed to install binary: %w", err)
+			return fmt.Errorf("failed to install binary: %w\n\nRun 'gh install-from init' to add the bin directory to PATH. %s",
+				err, installFailureHint())
 		}
 
 		return nil
@@ -101,6 +98,15 @@ func Execute() {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+// installFailureHint returns shell-specific instructions for adding bin to PATH and applying changes
+func installFailureHint() string {
+	adapter, err := shell.NewShellAdapter(nil)
+	if err != nil {
+		return "Then source your shell config (e.g. source ~/.bashrc) to apply."
+	}
+	return adapter.ApplyHint()
 }
 
 func init() {

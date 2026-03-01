@@ -83,11 +83,51 @@ Example using ripgrep:
 gh install-from BurntSushi/ripgrep
 ```
 
+### Setup (PATH)
+
+Binaries are installed to `~/.gh-install-from/bin` (or `$GH_INSTALL_FROM_HOME/bin` if set). Add this directory to your PATH:
+
+```bash
+# Add to PATH (run once)
+gh install-from init
+```
+
+Or manually add to your shell config:
+- **Bash/Zsh**: `export PATH="$HOME/.gh-install-from/bin:$PATH"`
+- **Fish**: `set -U fish_user_paths $HOME/.gh-install-from/bin $fish_user_paths`
+
+Check if PATH is configured:
+```bash
+gh install-from doctor
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `gh install-from [owner/repo]` | Install a binary |
+| `gh install-from list` | List installed binaries |
+| `gh install-from update` | Update binaries that have new versions |
+| `gh install-from outdated` | List binaries with available updates |
+| `gh install-from remove [name\|repo]` | Remove an installed binary |
+| `gh install-from init` | Add bin directory to PATH (idempotent) |
+| `gh install-from doctor` | Check PATH configuration |
+| `gh install-from versions [owner/repo]` | Browse and select versions |
+
 ### Options
 
 - `--version, -v`: Print version information
 - `--no-version-check`: Disable automatic version check
 - `--verbose, -V`: Enable verbose output with detailed logging
+
+### Configuration
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `GH_INSTALL_FROM_HOME` | Root directory (default: `~/.gh-install-from`) |
+| `GH_INSTALL_FROM_CLIENT` | GitHub client adapter (default: `gh`) |
+| `GH_INSTALL_FROM_STORE` | Metadata store adapter (default: `json`) |
+| `GH_INSTALL_FROM_SHELL` | Shell for `init` command (default: auto-detect) |
 
 ### Verbose Mode
 
@@ -126,6 +166,8 @@ Install to your local bin directory:
 ```bash
 make install
 ```
+
+This copies the binary to `~/.local/bin`. After first use, run `gh install-from init` to add `~/.gh-install-from/bin` to PATH for installed binaries.
 
 ### Testing and Linting
 

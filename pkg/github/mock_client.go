@@ -1,5 +1,8 @@
 package github
 
+// Ensure MockClient implements Client
+var _ Client = (*MockClient)(nil)
+
 // MockClient implements Client interface for testing
 type MockClient struct {
 	GetLatestReleaseFunc func(repo string) (*Release, error)
