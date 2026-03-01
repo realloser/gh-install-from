@@ -10,6 +10,7 @@ LDFLAGS=-ldflags="-X 'github.com/realloser/gh-install-from/pkg/version.Version=$
 
 # Supported platforms
 PLATFORMS=darwin/amd64 darwin/arm64 linux/386 linux/amd64 linux/arm linux/arm64 windows/386 windows/amd64
+BINARY_NAMES=$(foreach PLATFORM,$(PLATFORMS),$(BINARY_NAME)-$(word 1,$(subst /, ,$(PLATFORM)))-$(word 2,$(subst /, ,$(PLATFORM))))
 
 # Generate platform-specific targets
 PLATFORM_TARGETS=$(foreach PLATFORM,$(PLATFORMS),dist/$(BINARY_NAME)_$(word 1,$(subst /, ,$(PLATFORM)))_$(word 2,$(subst /, ,$(PLATFORM))).tar.gz)
@@ -87,19 +88,21 @@ fix: lint-tools
 	goimports -w .
 	go fmt ./...
 
-.PHONY: release
-release: clean $(PLATFORM_TARGETS)
+.PHONY: tidy-up
+tidy-up:
+	go mod tidy
+	go mod verify
 
-# Pattern rule for building platform-specific binaries
-dist/%/$(BINARY_NAME)%: | dist/%
-	GOOS=$(word 1,$(subst _, ,$(notdir $(basename $@)))) \
-	GOARCH=$(word 2,$(subst _, ,$(notdir $(basename $@)))) \
-	FILENAME=$(BINARY_NAME)$(if $(findstring windows,$(word 1,$(subst _, ,$(notdir $(basename $@))))),.exe,) \
-	go build $(LDFLAGS) -o $@/$${FILENAME}
+.PHONY: binaries
+binaries: $(foreach BINARY,$(BINARY_NAMES),dist/$(BINARY))
+	@echo "Build binaries: $^"
 
-# Pattern rule for creating directories
-dist/%:
-	mkdir -p $@
+dist/$(BINARY_NAME)%: tidy-up
+	GOOS=$(word 4,$(subst -, ,$(notdir $(basename $@)))) \
+	GOARCH=$(word 5,$(subst -, ,$(notdir $(basename $@)))) \
+	EXT=$(if $(findstring windows,$(word 4,$(subst -, ,$(notdir $(basename $@))))),.exe,)
+	@echo "Building binary: $@$(EXT)"
+	go build $(LDFLAGS) -o $@$(EXT)
 
 # Pattern rule for creating tarballs
 dist/%.tar.gz: dist/%/$(BINARY_NAME)%
@@ -120,16 +123,24 @@ tag:
 jobs:
 	@echo "Running with $(MAKEFLAGS) jobs"
 
+.PHONY: verbose
+verbose:
+	@echo "Running with $(MAKEFLAGS) jobs"
+	@echo "Platforms: $(PLATFORMS)"
+	@echo "Platform targets: $(PLATFORM_TARGETS)"
+	@echo "BINARY_NAMES: $(BINARY_NAMES)"
+
 .PHONY: help
 help:
 	@echo "Available targets:"
 	@echo "  build       - Build for current platform"
+	@echo "  tidy-up     - Tidy up Go modules"
 	@echo "  install     - Install to ~/.local/bin"
 	@echo "  clean       - Clean build artifacts and caches"
 	@echo "  test        - Run tests with race detection and coverage"
 	@echo "  lint        - Run all linters"
 	@echo "  fix         - Fix common linting issues automatically"
-	@echo "  release     - Build release artifacts for all platforms"
+	@echo "  binaries    - Build release artifacts for all platforms"
 	@echo "  tag         - Create a new version tag (TAG=X.Y.Z)"
 	@echo "  jobs        - Show parallel job count"
 	@echo ""
