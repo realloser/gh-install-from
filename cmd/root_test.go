@@ -60,6 +60,9 @@ func TestRootCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Reset flags that may persist from previous tests
+			rootCmd.Flags().Set("version", "false")
+
 			// Create pipes to capture stdout and stderr
 			rOut, wOut, err := os.Pipe()
 			if err != nil {

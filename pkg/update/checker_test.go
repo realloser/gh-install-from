@@ -78,6 +78,11 @@ func TestChecker_Check(t *testing.T) {
 			mockClient: &mockClient{
 				latestReleaseErr: os.ErrNotExist,
 			},
+			setupLastCheck: func(cacheDir string) {
+				file := filepath.Join(cacheDir, "last_check")
+				oldTime := time.Now().Add(-25 * time.Hour)
+				os.WriteFile(file, []byte(oldTime.Format(time.RFC3339)), 0600)
+			},
 			wantErr: true,
 		},
 	}

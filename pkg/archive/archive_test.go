@@ -231,12 +231,14 @@ func createTestZip(t *testing.T, name, content string) string {
 	zw := zip.NewWriter(tmpfile)
 
 	// Create file in zip with executable permissions
-	f, err := zw.CreateHeader(&zip.FileHeader{
+	fh := &zip.FileHeader{
 		Name:               name,
 		Method:             zip.Deflate,
 		UncompressedSize64: uint64(len(content)),
 		Modified:           time.Now(),
-	})
+	}
+	fh.SetMode(0755)
+	f, err := zw.CreateHeader(fh)
 	if err != nil {
 		t.Fatal(err)
 	}

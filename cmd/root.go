@@ -65,13 +65,13 @@ Examples:
 		}
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			return cmd.Usage()
-		}
-
 		if showVersion {
 			fmt.Print(version.DetailedInfo())
 			return nil
+		}
+
+		if len(args) == 0 {
+			return cmd.Usage()
 		}
 
 		repo := args[0]
