@@ -23,10 +23,12 @@ func (a *Archiver) ExtractFile(src, dest string) (string, error) {
 	case isZipFile(src):
 		return extractZipFile(src, dest)
 	default:
-		if err := copyFile(src, dest); err != nil {
+		// For plain binary files, create the destination file path
+		destFile := filepath.Join(dest, filepath.Base(src))
+		if err := copyFile(src, destFile); err != nil {
 			return "", err
 		}
-		return dest, nil
+		return destFile, nil
 	}
 }
 
@@ -151,6 +153,11 @@ func extractZipFile(src, dest string) (string, error) {
 }
 
 func copyFile(src, dest string) error {
+	// Check if dest is a directory and create a full path
+	if info, err := os.Stat(dest); err == nil && info.IsDir() {
+		dest = filepath.Join(dest, filepath.Base(src))
+	}
+	
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
