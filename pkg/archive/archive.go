@@ -11,11 +11,14 @@ import (
 	"strings"
 )
 
-// Archiver handles archive operations
+// Archiver handles archive operations (gzip/tar and zip). Bare binary handling
+// has moved to BinaryProcessor; the default bare-branch was removed because it
+// could self-truncate a downloaded asset to zero bytes when dest and src
+// resolved to the same path.
 type Archiver struct{}
 
-// ExtractFile extracts a file from a compressed archive or copies a regular file
-// Returns the path of the extracted binary file
+// ExtractFile extracts an executable file from a compressed archive.
+// Returns the path of the extracted binary file.
 func (a *Archiver) ExtractFile(src, dest string) (string, error) {
 	switch {
 	case isGzipFile(src):
@@ -23,12 +26,7 @@ func (a *Archiver) ExtractFile(src, dest string) (string, error) {
 	case isZipFile(src):
 		return extractZipFile(src, dest)
 	default:
-		// For plain binary files, create the destination file path
-		destFile := filepath.Join(dest, filepath.Base(src))
-		if err := copyFile(src, destFile); err != nil {
-			return "", err
-		}
-		return destFile, nil
+		return "", ErrUnsupportedFormat
 	}
 }
 
@@ -94,7 +92,7 @@ func extractGzipFile(src, dest string) (string, error) {
 	}
 
 	if extractedBinary == "" {
-		return "", fmt.Errorf("no executable binary found in archive")
+		return "", fmt.Errorf("%w", ErrNoExecutable)
 	}
 
 	return extractedBinary, nil
@@ -146,7 +144,7 @@ func extractZipFile(src, dest string) (string, error) {
 	}
 
 	if extractedBinary == "" {
-		return "", fmt.Errorf("no executable binary found in archive")
+		return "", fmt.Errorf("%w", ErrNoExecutable)
 	}
 
 	return extractedBinary, nil
@@ -157,7 +155,7 @@ func copyFile(src, dest string) error {
 	if info, err := os.Stat(dest); err == nil && info.IsDir() {
 		dest = filepath.Join(dest, filepath.Base(src))
 	}
-	
+
 	in, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
