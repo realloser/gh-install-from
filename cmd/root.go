@@ -4,6 +4,7 @@ Copyright © 2025 Martyn Messerli
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -17,9 +18,10 @@ import (
 )
 
 var (
-	verbose        bool
-	noVersionCheck bool
-	showVersion    bool
+	verbose          bool
+	noVersionCheck   bool
+	showVersion      bool
+	removeQuarantine bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -82,10 +84,14 @@ Examples:
 		if err != nil {
 			return fmt.Errorf("failed to create binary manager: %w", err)
 		}
+		manager = binary.ConfigureQuarantine(manager, NewTTYConfirmer(), removeQuarantine)
 
 		if err := manager.Install(repo); err != nil {
-			return fmt.Errorf("failed to install binary: %w\n\nRun 'gh install-from init' to add the bin directory to PATH. %s",
-				err, installFailureHint())
+			if errors.Is(err, binary.ErrPathSetup) {
+				return fmt.Errorf("%w\n\nRun 'gh install-from init' to add the bin directory to PATH. %s",
+					err, installFailureHint())
+			}
+			return err
 		}
 
 		return nil
@@ -112,5 +118,6 @@ func installFailureHint() string {
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "V", false, "enable verbose output")
 	rootCmd.PersistentFlags().BoolVar(&noVersionCheck, "no-version-check", false, "disable automatic version check")
+	rootCmd.PersistentFlags().BoolVar(&removeQuarantine, "remove-quarantine", false, "strip the macOS quarantine attribute after install without prompting (macOS only)")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "print version information")
 }

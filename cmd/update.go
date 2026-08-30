@@ -38,6 +38,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create binary manager: %w", err)
 	}
+	manager = binary.ConfigureQuarantine(manager, NewTTYConfirmer(), removeQuarantine)
 
 	if len(args) == 0 {
 		return manager.UpdateAll()
