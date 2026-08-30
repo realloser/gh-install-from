@@ -1,8 +1,6 @@
 module github.com/realloser/gh-install-from
 
-go 1.23.0
-
-toolchain go1.24.3
+go 1.27.0
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
@@ -10,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cli/go-gh v1.2.1
 	github.com/spf13/cobra v1.9.1
+	golang.org/x/sys v0.32.0
 )
 
 require (
@@ -39,7 +38,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sync v0.13.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
