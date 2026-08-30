@@ -51,6 +51,13 @@ jobs:
       - name: Build release artifacts
         run: make -j$(nproc) binaries
 
+      - name: Create tarballs
+        run: |
+          cd dist
+          for file in gh-install-from-*; do
+            tar -czf "${file}.tar.gz" "$file"
+          done
+
       - name: Generate checksums
         run: |
           cd dist
