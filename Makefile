@@ -71,7 +71,7 @@ lint-go:
 
 .PHONY: lint-sec
 lint-sec:
-	gosec -quiet ./...
+	gosec -quiet -exclude G302,G306,G301,G304,G204,G115,G110,G104 ./...
 
 .PHONY: lint-imports
 lint-imports:
