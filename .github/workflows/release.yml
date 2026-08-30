@@ -49,7 +49,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Build release artifacts
-        run: make -j$(nproc) release
+        run: make -j$(nproc) binaries
 
       - name: Generate checksums
         run: |
