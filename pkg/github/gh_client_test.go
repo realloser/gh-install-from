@@ -57,12 +57,12 @@ exit 0
 		}
 	})
 
-	// Test with custom host from auth status
+	// Test with custom host from auth status --json hosts
 	t.Run("custom host", func(t *testing.T) {
-		// Create mock gh that returns a custom host
+		// Create mock gh that returns a custom host via --json hosts
 		err := os.WriteFile(mockGh, []byte(`#!/bin/sh
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
-	echo "Logged in to github.enterprise.com as testuser"
+	echo '{"hosts":{"github.enterprise.com":[{"state":"success","active":true,"host":"github.enterprise.com","login":"testuser"}]}}'
 	exit 0
 fi
 exit 1
@@ -78,6 +78,29 @@ exit 1
 
 		if host := client.GetHost(); host != "github.enterprise.com" {
 			t.Errorf("expected host github.enterprise.com, got %s", host)
+		}
+	})
+
+	// Test with multiple hosts — active host is preferred
+	t.Run("multiple hosts active preferred", func(t *testing.T) {
+		err := os.WriteFile(mockGh, []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":false,"host":"github.com","login":"user"}],"git.corp.com":[{"state":"success","active":true,"host":"git.corp.com","login":"user"}]}}'
+	exit 0
+fi
+exit 1
+`), 0755)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		client, err := newGhCliClient()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if host := client.GetHost(); host != "git.corp.com" {
+			t.Errorf("expected active host git.corp.com, got %s", host)
 		}
 	})
 
@@ -105,17 +128,12 @@ exit 1
 		}
 	})
 
-	// Test with real gh auth status output format
+	// Test with real gh auth status --json hosts output format
 	t.Run("real auth status format", func(t *testing.T) {
-		// Create mock gh that returns real auth status output
+		// Create mock gh that returns real --json hosts output
 		err := os.WriteFile(mockGh, []byte(`#!/bin/sh
 if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
-	echo "github.com"
-	echo "  ✓ Logged in to github.com account realloser (keyring)"
-	echo "  - Active account: true"
-	echo "  - Git operations protocol: ssh"
-	echo "  - Token: gho_************************************"
-	echo "  - Token scopes: 'admin:public_key', 'gist', 'read:org', 'repo'"
+	echo '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"realloser"}]}}'
 	exit 0
 fi
 exit 1
@@ -392,5 +410,206 @@ func TestIsValidRepo(t *testing.T) {
 				t.Errorf("isValidRepo() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestGetLatestRelease_MultiHostProbe verifies the core multi-host behavior:
+// when a repo is not found on the first host (404), the client probes the next
+// authenticated host and succeeds there. This is the regression guard for the
+// "404 on the wrong host" bug.
+func TestGetLatestRelease_MultiHostProbe(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockGh := filepath.Join(tmpDir, "gh")
+
+	// Mock gh: auth status returns two hosts (github.com inactive,
+	// git.enterprise.com active). api calls 404 on github.com but succeed on
+	// the enterprise host.
+	err := os.WriteFile(mockGh, []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":false,"host":"github.com","login":"user"}],"git.enterprise.com":[{"state":"success","active":true,"host":"git.enterprise.com","login":"user"}]}}'
+	exit 0
+fi
+if [ "$1" = "api" ]; then
+	# Determine the target host: --hostname <h> may be $2/$3, or absent (github.com).
+	host="github.com"
+	if [ "$2" = "--hostname" ]; then
+		host="$3"
+	fi
+	if [ "$host" = "git.enterprise.com" ] && echo "$@" | grep -q "repos/acme/tool/releases/latest"; then
+		echo '{"tag_name":"v2.0.0","assets":[{"name":"tool","browser_download_url":"https://git.enterprise.com/tool"}]}'
+		exit 0
+	fi
+	echo "gh: Not Found (HTTP 404)" >&2
+	exit 1
+fi
+exit 1
+`), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origPath := os.Getenv("PATH")
+	os.Setenv("PATH", fmt.Sprintf("%s:%s", tmpDir, origPath))
+	defer os.Setenv("PATH", origPath)
+
+	client, err := newGhCliClient()
+	if err != nil {
+		t.Fatalf("newGhCliClient: %v", err)
+	}
+
+	release, err := client.GetLatestRelease("acme/tool")
+	if err != nil {
+		t.Fatalf("GetLatestRelease should succeed by probing the enterprise host: %v", err)
+	}
+	if release.TagName != "v2.0.0" {
+		t.Errorf("tag = %s, want v2.0.0", release.TagName)
+	}
+	// The winning host must be remembered for the subsequent download.
+	if host := client.GetHost(); host != "git.enterprise.com" {
+		t.Errorf("resolved host = %s, want git.enterprise.com (must be remembered for download)", host)
+	}
+}
+
+// TestGetLatestRelease_NotOnAnyHost verifies that when the repo 404s on every
+// authenticated host, the error lists the hosts tried.
+func TestGetLatestRelease_NotOnAnyHost(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockGh := filepath.Join(tmpDir, "gh")
+
+	err := os.WriteFile(mockGh, []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"user"}],"git.enterprise.com":[{"state":"success","active":false,"host":"git.enterprise.com","login":"user"}]}}'
+	exit 0
+fi
+if [ "$1" = "api" ]; then
+	echo "gh: Not Found (HTTP 404)" >&2
+	exit 1
+fi
+exit 1
+`), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origPath := os.Getenv("PATH")
+	os.Setenv("PATH", fmt.Sprintf("%s:%s", tmpDir, origPath))
+	defer os.Setenv("PATH", origPath)
+
+	client, err := newGhCliClient()
+	if err != nil {
+		t.Fatalf("newGhCliClient: %v", err)
+	}
+
+	_, err = client.GetLatestRelease("acme/missing")
+	if err == nil {
+		t.Fatal("expected error when repo not found on any host")
+	}
+	if !strings.Contains(err.Error(), "not found on any authenticated host") {
+		t.Errorf("error should mention 'not found on any authenticated host', got: %v", err)
+	}
+}
+
+// TestGetLatestRelease_AmbiguousMultiHost verifies that when a repo exists on
+// multiple authenticated hosts, the install is aborted with a message listing
+// both URLs and the exact --host command to disambiguate — never silently
+// guessing.
+func TestGetLatestRelease_AmbiguousMultiHost(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockGh := filepath.Join(tmpDir, "gh")
+
+	// Mock gh: two hosts, both have the repo -> ambiguous.
+	err := os.WriteFile(mockGh, []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"user"}],"git.enterprise.com":[{"state":"success","active":true,"host":"git.enterprise.com","login":"user"}]}}'
+	exit 0
+fi
+if [ "$1" = "api" ] && echo "$@" | grep -q "repos/acme/tool/releases/latest"; then
+	echo '{"tag_name":"v1.0.0","assets":[]}'
+	exit 0
+fi
+echo "gh: Not Found (HTTP 404)" >&2
+exit 1
+`), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origPath := os.Getenv("PATH")
+	os.Setenv("PATH", fmt.Sprintf("%s:%s", tmpDir, origPath))
+	defer os.Setenv("PATH", origPath)
+
+	client, err := newGhCliClient()
+	if err != nil {
+		t.Fatalf("newGhCliClient: %v", err)
+	}
+
+	_, err = client.GetLatestRelease("acme/tool")
+	if err == nil {
+		t.Fatal("expected ambiguous-match error when repo exists on multiple hosts")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "multiple authenticated hosts") {
+		t.Errorf("error should mention 'multiple authenticated hosts', got: %v", err)
+	}
+	// Both URLs must be listed.
+	if !strings.Contains(msg, "https://github.com/acme/tool") {
+		t.Errorf("error should list github.com URL, got: %v", err)
+	}
+	if !strings.Contains(msg, "https://git.enterprise.com/acme/tool") {
+		t.Errorf("error should list enterprise URL, got: %v", err)
+	}
+	// The disambiguation command must show the full URL form.
+	if !strings.Contains(msg, "gh install-from https://") {
+		t.Errorf("error should show the full-URL disambiguation command, got: %v", err)
+	}
+}
+
+// TestGetLatestRelease_ExplicitHost verifies that --host pins the client: it
+// probes only the specified host and does not enumerate or disambiguate.
+func TestGetLatestRelease_ExplicitHost(t *testing.T) {
+	tmpDir := t.TempDir()
+	mockGh := filepath.Join(tmpDir, "gh")
+
+	// Mock gh: api succeeds only on git.enterprise.com; auth status lists both.
+	err := os.WriteFile(mockGh, []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":true,"host":"github.com","login":"user"}],"git.enterprise.com":[{"state":"success","active":false,"host":"git.enterprise.com","login":"user"}]}}'
+	exit 0
+fi
+if [ "$1" = "api" ]; then
+	host="github.com"
+	if [ "$2" = "--hostname" ]; then host="$3"; fi
+	if [ "$host" = "git.enterprise.com" ] && echo "$@" | grep -q "repos/acme/tool/releases/latest"; then
+		echo '{"tag_name":"v2.0.0","assets":[]}'
+		exit 0
+	fi
+	echo "gh: Not Found (HTTP 404)" >&2
+	exit 1
+fi
+exit 1
+`), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	origPath := os.Getenv("PATH")
+	os.Setenv("PATH", fmt.Sprintf("%s:%s", tmpDir, origPath))
+	defer os.Setenv("PATH", origPath)
+
+	// Pass the full URL to pin the host — no probing of github.com, no ambiguity.
+	client, err := newGhCliClient()
+	if err != nil {
+		t.Fatalf("newGhCliClient: %v", err)
+	}
+
+	release, err := client.GetLatestRelease("https://git.enterprise.com/acme/tool")
+	if err != nil {
+		t.Fatalf("full URL should succeed without ambiguity: %v", err)
+	}
+	if release.TagName != "v2.0.0" {
+		t.Errorf("tag = %s, want v2.0.0", release.TagName)
+	}
+	if host := client.GetHost(); host != "git.enterprise.com" {
+		t.Errorf("host = %s, want git.enterprise.com", host)
 	}
 }
