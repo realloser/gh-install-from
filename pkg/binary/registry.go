@@ -81,21 +81,25 @@ func newManagerFromConfig(cfg *config.Config) (Manager, error) {
 	}
 
 	return &managerImpl{
-		pathMgr:  pathMgr,
-		client:   client,
-		store:    store,
-		osSvc:    osSvc,
-		archiver: &archive.Archiver{},
+		pathMgr:          pathMgr,
+		client:           client,
+		store:            store,
+		osSvc:            osSvc,
+		archiveProcessor: &archive.ArchiveProcessor{},
+		binaryProcessor:  &archive.BinaryProcessor{},
 	}, nil
 }
 
-// NewWithDeps creates a Manager with injected dependencies (for tests)
-func NewWithDeps(pathMgr *path.Manager, client github.Client, store metadata.MetadataStore, osSvc fs.OSService, archiver interface{ ExtractFile(src, destDir string) (string, error) }) Manager {
+// NewWithDeps creates a Manager with injected dependencies (for tests).
+// confirmer is optional — pass nil for non-interactive (CI) behavior.
+func NewWithDeps(pathMgr *path.Manager, client github.Client, store metadata.MetadataStore, osSvc fs.OSService, archiveProcessor, binaryProcessor processor, confirmer Confirmer) Manager {
 	return &managerImpl{
-		pathMgr:  pathMgr,
-		client:   client,
-		store:    store,
-		osSvc:    osSvc,
-		archiver: archiver,
+		pathMgr:          pathMgr,
+		client:           client,
+		store:            store,
+		osSvc:            osSvc,
+		archiveProcessor: archiveProcessor,
+		binaryProcessor:  binaryProcessor,
+		confirmer:        confirmer,
 	}
 }

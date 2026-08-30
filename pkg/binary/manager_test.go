@@ -18,25 +18,41 @@ import (
 	"github.com/realloser/gh-install-from/pkg/path"
 )
 
-// mockArchive is used to replace the archive package during testing
-type mockArchive struct{}
+// mockArchiveProcessor replaces the archive.Processor (archive path) during tests.
+type mockArchiveProcessor struct {
+	err error // if set, Process returns this error
+}
 
-func (m *mockArchive) ExtractFile(src, destDir string) (string, error) {
-	// Extract to a simple binary name (e.g. "repo" for test/repo)
-	base := filepath.Base(src)
-	binaryName := strings.TrimSuffix(strings.TrimSuffix(base, ".tar.gz"), ".zip")
-	if idx := strings.Index(binaryName, "_"); idx > 0 {
-		binaryName = binaryName[:idx] // "test-binary_linux_amd64" -> "test-binary"
+func (m *mockArchiveProcessor) Process(src, destDir string) (string, error) {
+	if m.err != nil {
+		return "", m.err
 	}
-	binaryPath := filepath.Join(destDir, binaryName)
+	return writeMockBinary(src, destDir, "test-binary"), nil
+}
+
+// mockBinaryProcessor replaces the binary.Processor (bare-binary path) during tests.
+type mockBinaryProcessor struct {
+	err   error // if set, Process returns this error
+	calls int   // records how many times Process was invoked
+}
+
+func (m *mockBinaryProcessor) Process(src, destDir string) (string, error) {
+	m.calls++
+	if m.err != nil {
+		return "", m.err
+	}
+	return writeMockBinary(src, destDir, "mycli"), nil
+}
+
+// writeMockBinary writes a non-trivial shell script to destDir under the given
+// name and returns its path, mirroring what the real processors produce.
+func writeMockBinary(src, destDir, name string) string {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return "", err
+		return ""
 	}
-	content := []byte("#!/bin/sh\necho 'test binary'\n")
-	if err := os.WriteFile(binaryPath, content, 0755); err != nil {
-		return "", err
-	}
-	return binaryPath, nil
+	binaryPath := filepath.Join(destDir, name)
+	_ = os.WriteFile(binaryPath, []byte("#!/bin/sh\necho 'test binary'\n"), 0755)
+	return binaryPath
 }
 
 // mockClient implements github.Client for testing
@@ -96,7 +112,7 @@ func setupManagerForTest(t *testing.T, mc *mockClient) Manager {
 		t.Fatalf("fs.NewOSService: %v", err)
 	}
 
-	return NewWithDeps(pathMgr, mc, store, osSvc, &mockArchive{})
+	return NewWithDeps(pathMgr, mc, store, osSvc, &mockArchiveProcessor{}, &mockBinaryProcessor{}, nil)
 }
 
 func TestManager_Remove(t *testing.T) {
