@@ -6,8 +6,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/spf13/cobra"
+
+	"github.com/realloser/gh-install-from/pkg/binary"
 )
 
 // updateCmd represents the update command
@@ -38,6 +39,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create binary manager: %w", err)
 	}
+	manager = binary.ConfigureQuarantine(manager, NewTTYConfirmer(), removeQuarantine)
 
 	if len(args) == 0 {
 		return manager.UpdateAll()

@@ -3,10 +3,13 @@ package github
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
+	"sync"
 )
 
 // Release represents a GitHub release
@@ -39,26 +42,20 @@ type ghCliClient struct {
 	host string
 }
 
-// newGhCliClient creates a new GitHub client using gh cli
+// newGhCliClient creates a new GitHub client using gh cli. The host is
+// auto-resolved per-repo in GetLatestRelease (which accepts either owner/repo
+// or a full https://host/owner/repo URL).
 func newGhCliClient() (Client, error) {
 	// Check if gh is installed
 	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, fmt.Errorf("gh cli is not installed: %w", err)
+		return nil, fmt.Errorf("gh cli is not installed: %w\n\nInstall it from https://cli.github.com/ or via 'brew install gh'", err)
 	}
 
-	// Get the host from gh auth status, default to github.com
+	// Default to github.com; GetLatestRelease probes all authenticated hosts
+	// per-repo and remembers the winner.
 	host := "github.com"
-	cmd := exec.Command("gh", "auth", "status")
-	if output, err := cmd.Output(); err == nil {
-		// Parse the first line which contains the host
-		lines := strings.Split(string(output), "\n")
-		if len(lines) > 0 {
-			// The line format is typically: "Logged in to github.com as USERNAME"
-			fields := strings.Fields(lines[0])
-			if len(fields) >= 4 && fields[3] != "" {
-				host = fields[3]
-			}
-		}
+	if hosts, err := authenticatedHosts(); err == nil && len(hosts) > 0 {
+		host = hosts[0]
 	}
 
 	return &ghCliClient{host: host}, nil
@@ -67,34 +64,173 @@ func newGhCliClient() (Client, error) {
 // NewGhCliClient is a variable so it can be overridden in tests
 var NewGhCliClient = newGhCliClient
 
-// GetLatestRelease implements Client.GetLatestRelease using gh api
-func (c *ghCliClient) GetLatestRelease(repo string) (*Release, error) {
-	// Validate repo format
-	if !isValidRepo(repo) {
-		return nil, fmt.Errorf("invalid repository format: %s", repo)
+// parseRepoArg accepts either "owner/repo" or a full URL
+// "https://host/owner/repo" (optionally with a trailing path like /releases).
+// It returns the host (empty for owner/repo) and the owner/repo string.
+func parseRepoArg(arg string) (host, repo string, err error) {
+	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
+		u, perr := url.Parse(arg)
+		if perr != nil {
+			return "", "", fmt.Errorf("invalid repository URL %q: %w", arg, perr)
+		}
+		// Path is like /owner/repo or /owner/repo/...
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+			return "", "", fmt.Errorf("invalid repository URL %q: expected https://<host>/<owner>/<repo>", arg)
+		}
+		return u.Host, parts[0] + "/" + parts[1], nil
+	}
+	// Plain owner/repo — no host, will be resolved by probing.
+	if !isValidRepo(arg) {
+		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo or https://host/owner/repo)", arg)
+	}
+	return "", arg, nil
+}
+
+// GetLatestRelease implements Client.GetLatestRelease using gh api. The repo
+// argument may be either "owner/repo" (auto-resolved across authenticated
+// hosts) or a full URL "https://host/owner/repo" (pins the host directly).
+//
+// For owner/repo: probes each authenticated host (with --hostname) until one
+// returns a non-404 result. When the repo exists on exactly one host, that
+// host is used. When it exists on multiple hosts, the install is aborted with
+// a message listing each host's URL — the tool never silently guesses.
+//
+// For a full URL: the host is used directly, no probing.
+//
+// The winning host is stored on the client for subsequent DownloadAsset calls.
+func (c *ghCliClient) GetLatestRelease(repoArg string) (*Release, error) {
+	host, repo, err := parseRepoArg(repoArg)
+	if err != nil {
+		return nil, err
 	}
 
-	cmd := exec.Command("gh", "api", fmt.Sprintf("repos/%s/releases/latest", repo))
+	// A full URL pins the host: probe only that host, no multi-host resolution.
+	if host != "" {
+		release, ok, err := c.probeRelease(host, repo)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("repository %s not found on host %s", repo, host)
+		}
+		c.host = host
+		return release, nil
+	}
 
-	// Capture both stdout and stderr
+	hosts, err := authenticatedHosts()
+	if err != nil || len(hosts) == 0 {
+		// No enumerable hosts — fall back to the single current host.
+		hosts = []string{c.host}
+	}
+
+	// Probe every host concurrently and collect matches. A 404 means "not on
+	// this host"; any other error fails immediately. We must probe ALL hosts
+	// (not short-circuit on first match) to detect ambiguity, so concurrency
+	// keeps latency at one round-trip regardless of host count.
+	type match struct {
+		host    string
+		release *Release
+	}
+	type result struct {
+		host    string
+		release *Release
+		ok      bool
+		err     error
+	}
+	results := make(chan result, len(hosts))
+	var wg sync.WaitGroup
+	for _, host := range hosts {
+		wg.Add(1)
+		go func(h string) {
+			defer wg.Done()
+			rel, ok, err := c.probeRelease(h, repo)
+			results <- result{host: h, release: rel, ok: ok, err: err}
+		}(host)
+	}
+	wg.Wait()
+	close(results)
+
+	var matches []match
+	var firstErr error
+	for r := range results {
+		if r.err != nil {
+			// non-404 real error — fail immediately (but collect the first).
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			continue
+		}
+		if r.ok {
+			matches = append(matches, match{host: r.host, release: r.release})
+		}
+	}
+	if firstErr != nil && len(matches) == 0 {
+		// A real error occurred and no host matched — surface it.
+		return nil, firstErr
+	}
+
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("repository %s not found on any authenticated host (%s)\n\nCheck that:\n  - the repository name is correct (owner/repo)\n  - you are authenticated to the right host: 'gh auth status'\n  - the repository is not private or you have access", repo, strings.Join(hosts, ", "))
+	case 1:
+		c.host = matches[0].host // remember the winning host for download + metadata
+		slog.Info("resolved to host", "host", c.host)
+		return matches[0].release, nil
+	default:
+		// Ambiguous: the repo exists on multiple hosts. Abort with a
+		// disambiguation message listing each URL rather than silently guessing.
+		var urls []string
+		for _, m := range matches {
+			urls = append(urls, fmt.Sprintf("  - https://%s/%s", m.host, repo))
+		}
+		return nil, fmt.Errorf(
+			"repository %s found on multiple authenticated hosts:\n%s\n"+
+				"Specify the full URL to disambiguate, e.g.:\n  gh install-from https://%s/%s",
+			repo, strings.Join(urls, "\n"), matches[0].host, repo)
+	}
+}
+
+// probeRelease runs `gh api --hostname <host> repos/<repo>/releases/latest` and
+// reports (release, true, nil) on success, (nil, false, nil) on a 404 (not
+// found on this host), and (nil, false, err) on any other error.
+func (c *ghCliClient) probeRelease(host, repo string) (*Release, bool, error) {
+	slog.Info("checking host", "host", host)
+	args := []string{"api"}
+	if host != "" && host != "github.com" {
+		args = append(args, "--hostname", host)
+	}
+	args = append(args, fmt.Sprintf("repos/%s/releases/latest", repo))
+
+	cmd := exec.Command("gh", args...)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		stderrStr := stderr.String()
-		if stderrStr != "" {
-			return nil, fmt.Errorf("failed to get latest release: %w\nCommand output: %s", err, stderrStr)
+		if isNotFound(stderrStr) {
+			slog.Debug("release not found on host", "host", host, "repo", repo)
+			return nil, false, nil
 		}
-		return nil, fmt.Errorf("failed to get latest release: %w", err)
+		if stderrStr != "" {
+			return nil, false, fmt.Errorf("failed to get latest release from %s: %w\nCommand output: %s", host, err, stderrStr)
+		}
+		return nil, false, fmt.Errorf("failed to get latest release from %s: %w", host, err)
 	}
 
 	var release Release
 	if err := json.Unmarshal([]byte(stdout.String()), &release); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, false, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &release, nil
+	slog.Info("found on host", "host", host, "tag", release.TagName)
+	return &release, true, nil
+}
+
+// isNotFound reports whether gh stderr output indicates an HTTP 404.
+func isNotFound(stderr string) bool {
+	return strings.Contains(stderr, "Not Found") || strings.Contains(stderr, "HTTP 404")
 }
 
 // GetHost implements Client.GetHost
@@ -110,8 +246,15 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	}
 
 	// Use gh api with --method GET and write output to file
-	// Note: We don't use --raw flag as it's not supported in all gh versions
-	cmd := exec.Command("gh", "api", downloadURL)
+	// Note: We don't use --raw flag as it's not supported in all gh versions.
+	// Pass --hostname so the download uses the resolved host's auth (asset URLs
+	// are host-specific).
+	args := []string{"api"}
+	if c.host != "" && c.host != "github.com" {
+		args = append(args, "--hostname", c.host)
+	}
+	args = append(args, downloadURL)
+	cmd := exec.Command("gh", args...)
 
 	// Capture stderr
 	var stderr strings.Builder
@@ -165,8 +308,8 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 
 // isValidRepo checks if a repository string is in the correct format (owner/repo)
 func isValidRepo(repo string) bool {
-	// Simple check for now, could be more sophisticated
-	return len(repo) > 0 && repo[0] != '/' && repo[len(repo)-1] != '/' && len(repo) < 256
+	// Must be owner/repo: non-empty, contains a slash, doesn't start/end with one.
+	return len(repo) > 0 && repo[0] != '/' && repo[len(repo)-1] != '/' && len(repo) < 256 && strings.Contains(repo, "/")
 }
 
 // GetLatestRelease is a convenience function that creates a new client and gets the latest release

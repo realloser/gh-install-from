@@ -33,28 +33,28 @@ func TestRootCmd(t *testing.T) {
 	version.Date = "2024-03-14"
 
 	tests := []struct {
-		name        string
-		args        []string
-		wantOutput  string
-		wantErr     bool
+		name       string
+		args       []string
+		wantOutput string
+		wantErr    bool
 	}{
 		{
-			name: "version flag",
-			args: []string{"--version"},
+			name:       "version flag",
+			args:       []string{"--version"},
 			wantOutput: "Version: 1.0.0\nCommit: abc123\nBuild Date: 2024-03-14",
-			wantErr: false,
+			wantErr:    false,
 		},
 		{
-			name: "version short flag",
-			args: []string{"-v"},
+			name:       "version short flag",
+			args:       []string{"-v"},
 			wantOutput: "Version: 1.0.0\nCommit: abc123\nBuild Date: 2024-03-14",
-			wantErr: false,
+			wantErr:    false,
 		},
 		{
-			name: "no flags shows help",
-			args: []string{},
+			name:       "no flags shows help",
+			args:       []string{},
 			wantOutput: "Usage:",
-			wantErr: false,
+			wantErr:    false,
 		},
 	}
 
@@ -122,4 +122,4 @@ func TestRootCmd(t *testing.T) {
 			}
 		})
 	}
-} 
+}

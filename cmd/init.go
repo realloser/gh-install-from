@@ -6,9 +6,10 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/realloser/gh-install-from/pkg/path"
 	"github.com/realloser/gh-install-from/pkg/shell"
-	"github.com/spf13/cobra"
 )
 
 // initCmd adds the gh-install-from bin directory to the shell PATH

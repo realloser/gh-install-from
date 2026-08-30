@@ -4,8 +4,9 @@ Copyright © 2025 Martyn Messerli
 package cmd
 
 import (
-	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/spf13/cobra"
+
+	"github.com/realloser/gh-install-from/pkg/binary"
 )
 
 // removeCmd represents the remove command

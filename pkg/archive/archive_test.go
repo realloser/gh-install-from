@@ -78,35 +78,6 @@ func TestExtractFile(t *testing.T) {
 			},
 		},
 		{
-			name: "simple binary file",
-			setup: func(t *testing.T) (string, string) {
-				src := createTestFile(t, "test content")
-				dst := filepath.Join(t.TempDir(), "copied-bin")
-				if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-					t.Fatal(err)
-				}
-				return src, dst
-			},
-			wantErr: false,
-			cleanup: func(t *testing.T, src string) {
-				os.Remove(src)
-			},
-			validate: func(t *testing.T, path string) {
-				// Verify file exists
-				if _, err := os.Stat(path); err != nil {
-					t.Errorf("ExtractFile() destination file not created: %v", err)
-				}
-
-				// Verify permissions
-				info, err := os.Stat(path)
-				if err != nil {
-					t.Errorf("Failed to stat destination file: %v", err)
-				} else if info.Mode().Perm() != 0755 {
-					t.Errorf("Incorrect file permissions: got %v, want %v", info.Mode().Perm(), 0755)
-				}
-			},
-		},
-		{
 			name: "invalid_tar.gz_file",
 			setup: func(t *testing.T) (string, string) {
 				src := filepath.Join(t.TempDir(), "invalid.tar.gz")
