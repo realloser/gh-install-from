@@ -10,8 +10,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/realloser/gh-install-from/pkg/path"
 	"github.com/spf13/cobra"
+
+	"github.com/realloser/gh-install-from/pkg/path"
 )
 
 // doctorCmd checks PATH configuration

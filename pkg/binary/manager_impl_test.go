@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"testing"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/realloser/gh-install-from/pkg/archive"
 	"github.com/realloser/gh-install-from/pkg/config"
 	"github.com/realloser/gh-install-from/pkg/fs"
@@ -18,7 +20,6 @@ import (
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/metadata"
 	"github.com/realloser/gh-install-from/pkg/path"
-	"golang.org/x/sys/unix"
 )
 
 // setQuarantineForTest sets the com.apple.quarantine xattr on path for test

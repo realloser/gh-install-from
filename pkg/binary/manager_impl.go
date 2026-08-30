@@ -452,7 +452,7 @@ func findMatchingAsset(assets []github.Asset) (*github.Asset, error) {
 		return &plainCandidates[0], nil
 	}
 	var errMsg strings.Builder
-	errMsg.WriteString(fmt.Sprintf("no matching binary found for %s_%s\n", runtime.GOOS, runtime.GOARCH))
+	fmt.Fprintf(&errMsg, "no matching binary found for %s_%s\n", runtime.GOOS, runtime.GOARCH)
 	if len(ghExtensions) > 0 {
 		errMsg.WriteString("\nFound GitHub CLI extensions that were skipped.\n")
 	}

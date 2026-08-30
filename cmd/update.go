@@ -6,8 +6,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/spf13/cobra"
+
+	"github.com/realloser/gh-install-from/pkg/binary"
 )
 
 // updateCmd represents the update command

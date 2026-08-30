@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/github"
 	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/realloser/gh-install-from/pkg/shell"
 	"github.com/realloser/gh-install-from/pkg/update"
 	"github.com/realloser/gh-install-from/pkg/version"
-	"github.com/spf13/cobra"
 )
 
 var (

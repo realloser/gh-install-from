@@ -9,8 +9,9 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cli/go-gh"
-	"github.com/realloser/gh-install-from/pkg/log"
 	"github.com/spf13/cobra"
+
+	"github.com/realloser/gh-install-from/pkg/log"
 )
 
 type releaseVersion struct {

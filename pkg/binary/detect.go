@@ -19,35 +19,45 @@ import (
 // classified as quarantined.
 func detectQuarantine(binPath string) (quarantined bool, detail string) {
 	for _, arg := range []string{"--help", "-h", "--version"} {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, binPath, arg)
-		var out, errBuf bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &errBuf
-		err := cmd.Run()
-		if ctx.Err() == context.DeadlineExceeded {
-			// Hung past the timeout — a binary that blocks on --help is not a
-			// quarantine kill. Stop here rather than trying the remaining flags.
-			cancel()
-			return false, ""
+		q, d := probeBinaryForQuarantine(binPath, arg)
+		if q || d != "" || arg == "--version" {
+			// Found a quarantine kill, or a definitive non-quarantine result.
+			// On the last flag, return whatever we got.
+			return q, d
 		}
-		cancel()
-		if err == nil {
-			return false, "" // binary ran fine
-		}
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			if isQuarantineKill(ee.ExitCode(), out.Len() > 0) {
-				return true, errBuf.String()
-			}
-			// Non-zero exit but the binary ran (usage/flag error) => not quarantine.
-			return false, ""
-		}
-		// Not an ExitError (e.g. "exec format error" for a text file, or a
-		// missing binary) => the binary did not get far enough to be killed by
-		// Gatekeeper; treat as not quarantined.
+		// Non-quarantine result without detail — try the next flag.
+	}
+	return false, ""
+}
+
+// probeBinaryForQuarantine runs the binary with a single no-op flag and
+// classifies the result. Returns (true, stderr) on a quarantine kill,
+// (false, "") on a definitive non-quarantine result (ran fine, usage error,
+// exec format error), and (false, "") to continue trying other flags.
+func probeBinaryForQuarantine(binPath, arg string) (quarantined bool, detail string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binPath, arg)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errBuf
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		// Hung past the timeout — not a quarantine kill.
 		return false, ""
 	}
+	if err == nil {
+		return false, "" // binary ran fine
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if isQuarantineKill(ee.ExitCode(), out.Len() > 0) {
+			return true, errBuf.String()
+		}
+		// Non-zero exit but the binary ran (usage/flag error) => not quarantine.
+		return false, ""
+	}
+	// Not an ExitError (e.g. "exec format error" for a text file) => not quarantine.
 	return false, ""
 }
 

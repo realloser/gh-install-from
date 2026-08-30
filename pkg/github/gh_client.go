@@ -39,8 +39,7 @@ var _ Client = (*ghCliClient)(nil)
 
 // ghCliClient implements the Client interface using gh cli commands
 type ghCliClient struct {
-	host         string
-	explicitHost bool // true when the host was pinned via --host (skip probing)
+	host string
 }
 
 // newGhCliClient creates a new GitHub client using gh cli. The host is

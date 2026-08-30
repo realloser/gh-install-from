@@ -32,9 +32,7 @@ func NewJSONStore(metadataDir string) *JSONStore {
 
 // NewJSONStoreFromConfig creates a JSONStore from config (used by registry)
 func NewJSONStoreFromConfig(cfg *config.Config) (MetadataStore, error) {
-	if cfg == nil {
-		cfg = config.FromEnv()
-	}
+	_ = cfg // config not needed; home dir is resolved from env below
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)

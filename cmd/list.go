@@ -8,9 +8,10 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
+
 	"github.com/realloser/gh-install-from/pkg/binary"
 	"github.com/realloser/gh-install-from/pkg/log"
-	"github.com/spf13/cobra"
 )
 
 var (
