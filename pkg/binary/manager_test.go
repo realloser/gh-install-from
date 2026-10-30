@@ -61,9 +61,11 @@ type mockClient struct {
 	latestRelease    *github.Release
 	latestReleaseErr error
 	downloadAssetErr error
+	lastRepo         string // repo argument of the most recent GetLatestRelease call
 }
 
 func (m *mockClient) GetLatestRelease(repo string) (*github.Release, error) {
+	m.lastRepo = repo
 	return m.latestRelease, m.latestReleaseErr
 }
 
@@ -304,5 +306,59 @@ func TestManager_Install(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPinnedRepo(t *testing.T) {
+	tests := []struct{ repo, host, want string }{
+		{"owner/repo", "ghe.example.com", "https://ghe.example.com/owner/repo"},
+		{"owner/repo", "github.com", "https://github.com/owner/repo"},
+		{"owner/repo", "", "owner/repo"},
+		{"https://ghe.example.com/owner/repo", "ghe.example.com", "https://ghe.example.com/owner/repo"},
+		{"ghe.example.com/owner/repo", "ghe.example.com", "ghe.example.com/owner/repo"},
+	}
+	for _, tt := range tests {
+		if got := pinnedRepo(tt.repo, tt.host); got != tt.want {
+			t.Errorf("pinnedRepo(%q, %q) = %q, want %q", tt.repo, tt.host, got, tt.want)
+		}
+	}
+}
+
+func TestManager_UpdatePinsInstalledHost(t *testing.T) {
+	log.Init(false)
+	mc := &mockClient{
+		host: "ghe.example.com",
+		latestRelease: &github.Release{
+			TagName: "v1.0.0",
+			Assets: []github.Asset{{
+				Name:               fmt.Sprintf("tool_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH),
+				BrowserDownloadURL: "https://example.com/tool",
+			}},
+		},
+	}
+	manager := setupManagerForTest(t, mc)
+
+	// Install through a host-qualified URL: owner/repo and host are stored separately.
+	if err := manager.Install("https://ghe.example.com/test/tool"); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	installed, err := manager.ListInstalled()
+	if err != nil || len(installed) != 1 {
+		t.Fatalf("ListInstalled = %v, %v", installed, err)
+	}
+	if installed[0].Repository != "test/tool" || installed[0].Host != "ghe.example.com" {
+		t.Errorf("stored Repository/Host = %q/%q, want test/tool / ghe.example.com", installed[0].Repository, installed[0].Host)
+	}
+
+	// Updating by plain owner/repo, by name, or by URL must all pin the stored host.
+	for i, ref := range []string{"test/tool", "tool", "https://ghe.example.com/test/tool"} {
+		mc.latestRelease.TagName = fmt.Sprintf("v1.%d.0", i+1) // a real update has a newer version
+		mc.lastRepo = ""
+		if err := manager.Update(ref); err != nil {
+			t.Fatalf("Update(%q): %v", ref, err)
+		}
+		if want := "https://ghe.example.com/test/tool"; mc.lastRepo != want {
+			t.Errorf("Update(%q) looked up %q, want %q", ref, mc.lastRepo, want)
+		}
 	}
 }
