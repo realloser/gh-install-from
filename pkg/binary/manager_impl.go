@@ -168,7 +168,7 @@ func (m *managerImpl) Install(repo string) error {
 
 	meta := &metadata.BinaryMetadata{
 		GHHost:         m.client.GetHost(),
-		Repository:     repo,
+		Repository:     ownerRepo,
 		Version:        release.TagName,
 		BinaryPath:     binPath,
 		OriginalBinary: extractedName,
@@ -274,7 +274,26 @@ func (m *managerImpl) shouldStripQuarantine(binaryName string) bool {
 
 func (m *managerImpl) Update(repo string) error {
 	slog.Info("updating binary", "repo", repo)
+	// Pin to the host the binary was installed from, so an owner/repo that
+	// later also exists on another authenticated host is not ambiguous.
+	if meta, err := m.findMeta(repo); err == nil {
+		repo = pinnedRepo(meta.Repository, meta.GHHost)
+	}
 	return m.Install(repo)
+}
+
+// pinnedRepo returns a host-qualified reference (https://host/owner/repo) for
+// an installed binary, so release lookups go to the host it came from instead
+// of probing every authenticated host. Already host-qualified references and
+// records without a host are returned unchanged.
+func pinnedRepo(repo, host string) string {
+	if host == "" {
+		return repo
+	}
+	if h, _, err := github.ParseRepoArg(repo); err != nil || h != "" {
+		return repo
+	}
+	return "https://" + host + "/" + repo
 }
 
 func (m *managerImpl) UpdateAll() error {
@@ -301,7 +320,7 @@ func (m *managerImpl) UpdateAll() error {
 
 	var updateErrors []string
 	for _, c := range candidates {
-		if err := m.Update(c.InstalledBinary.Repository); err != nil {
+		if err := m.Update(pinnedRepo(c.InstalledBinary.Repository, c.InstalledBinary.Host)); err != nil {
 			updateErrors = append(updateErrors, fmt.Sprintf("failed to update %s: %v", c.InstalledBinary.Repository, err))
 		}
 	}
@@ -375,8 +394,14 @@ func (m *managerImpl) findMeta(nameOrRepo string) (*metadata.BinaryMetadata, err
 		return nil, fmt.Errorf("failed to list metadata: %w", err)
 	}
 
+	// Also accept host-qualified references (https://host/owner/repo,
+	// host/owner/repo) for the binary's own host.
+	refHost, refRepo, refErr := github.ParseRepoArg(nameOrRepo)
 	for _, meta := range metaList {
 		if meta.Repository == nameOrRepo {
+			return meta, nil
+		}
+		if refErr == nil && refRepo == meta.Repository && (refHost == "" || refHost == meta.GHHost) {
 			return meta, nil
 		}
 		binaryName := filepath.Base(meta.BinaryPath)

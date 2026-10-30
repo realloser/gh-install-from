@@ -34,7 +34,7 @@ func CheckUpdates(installed []InstalledBinary, client github.Client, workers int
 				if b.Repository == "" {
 					continue
 				}
-				release, err := client.GetLatestRelease(b.Repository)
+				release, err := client.GetLatestRelease(pinnedRepo(b.Repository, b.Host))
 				if err != nil || release == nil {
 					slog.Debug("failed to get latest release", "repo", b.Repository, "error", err)
 					continue

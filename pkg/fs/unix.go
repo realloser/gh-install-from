@@ -40,6 +40,13 @@ func (s *UnixFSService) InstallBinary(binDir, binaryName, targetPath string) err
 		return fmt.Errorf("failed to create bin directory: %w", err)
 	}
 	linkPath := filepath.Join(binDir, binaryName)
+	// Replace our own symlink from a previous install/update; os.Symlink fails
+	// with "file exists" otherwise. Never clobber anything that is not a symlink.
+	if fi, err := os.Lstat(linkPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(linkPath); err != nil {
+			return fmt.Errorf("failed to replace existing symlink %s: %w", linkPath, err)
+		}
+	}
 	if err := os.Symlink(targetPath, linkPath); err != nil {
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", linkPath, targetPath, err)
 	}
