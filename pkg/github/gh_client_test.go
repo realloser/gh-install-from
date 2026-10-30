@@ -252,7 +252,7 @@ func TestGhCliClient_DownloadAsset(t *testing.T) {
 	// Create a mock gh command
 	mockGh := filepath.Join(tmpDir, "gh")
 	err = os.WriteFile(mockGh, []byte(`#!/bin/sh
-if [ "$1" = "api" ] && [ "$2" = "https://example.com/test.tar.gz" ]; then
+if [ "$1" = "api" ] && [ "$2" = "--" ] && [ "$3" = "https://example.com/test.tar.gz" ]; then
 	echo "test data"
 	exit 0
 else
@@ -659,7 +659,17 @@ func TestParseRepoArg(t *testing.T) {
 		{"ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
 		{"github.com/owner/repo", "github.com", "owner/repo", false},
 		{"ghe.example.com:8443/owner/repo", "ghe.example.com:8443", "owner/repo", false},
-		{"ghe.example.com/owner/repo/releases", "ghe.example.com", "owner/repo", false},
+		{"ghe.example.com/owner/repo/releases", "", "", true},
+		{"GHE.Example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"https://GHE.Example.com/owner/repo.git", "ghe.example.com", "owner/repo", false},
+		{"owner/repo.git", "", "owner/repo", false},
+		{"owner/repo/extra", "", "", true},
+		{"owner/../repo", "", "", true},
+		{"owner/..", "", "", true},
+		{"owner/repo?x=1", "", "", true},
+		{"owner/repo#frag", "", "", true},
+		{"-owner/repo", "", "", true},
+		{"https://ghe.example.com/owner/..", "", "", true},
 		{"ghe.example.com/owner", "", "", true},
 		{"repo", "", "", true},
 		{"https://ghe.example.com/owner", "", "", true},

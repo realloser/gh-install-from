@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -99,32 +100,63 @@ var NewGhCliClient = newGhCliClient
 // "host/owner/repo". It returns the host (empty for owner/repo) and the
 // owner/repo string.
 func parseRepoArg(arg string) (host, repo string, err error) {
+	bad := func() error {
+		return fmt.Errorf("invalid repository format: %s (use owner/repo, host/owner/repo or https://host/owner/repo)", arg)
+	}
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 		u, perr := url.Parse(arg)
 		if perr != nil {
 			return "", "", fmt.Errorf("invalid repository URL %q: %w", arg, perr)
 		}
-		// Path is like /owner/repo or /owner/repo/...
+		// Path is like /owner/repo or /owner/repo/... (a pasted releases URL).
 		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		if u.Host == "" || len(parts) < 2 {
 			return "", "", fmt.Errorf("invalid repository URL %q: expected https://<host>/<owner>/<repo>", arg)
 		}
-		return u.Host, parts[0] + "/" + parts[1], nil
+		owner, name, ok := cleanOwnerRepo(parts[0], parts[1])
+		if !ok {
+			return "", "", fmt.Errorf("invalid repository URL %q: expected https://<host>/<owner>/<repo>", arg)
+		}
+		return strings.ToLower(u.Host), owner + "/" + name, nil
 	}
+	parts := strings.Split(arg, "/")
 	// Scheme-less host/owner/repo (e.g. github.example.com/owner/repo). GitHub
 	// owner names cannot contain dots or colons, so a first segment with one is
 	// unambiguously a host.
-	if parts := strings.Split(strings.Trim(arg, "/"), "/"); len(parts) >= 3 &&
-		strings.ContainsAny(parts[0], ".:") && parts[1] != "" && parts[2] != "" {
-		return parts[0], parts[1] + "/" + parts[2], nil
+	if len(parts) == 3 && strings.ContainsAny(parts[0], ".:") {
+		owner, name, ok := cleanOwnerRepo(parts[1], parts[2])
+		if !ok {
+			return "", "", bad()
+		}
+		return strings.ToLower(parts[0]), owner + "/" + name, nil
 	}
-	// Plain owner/repo — no host, will be resolved by probing. An owner with a
-	// dot or colon is a host missing its owner/repo (e.g. "host/owner").
-	if !isValidRepo(arg) || strings.ContainsAny(strings.SplitN(arg, "/", 2)[0], ".:") {
-		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo, host/owner/repo or https://host/owner/repo)", arg)
+	// Plain owner/repo: exactly two segments, no host (resolved by probing).
+	// This also rejects "host/owner", since owners never contain dots or colons.
+	if len(parts) != 2 || strings.ContainsAny(parts[0], ".:") {
+		return "", "", bad()
 	}
-	return "", arg, nil
+	owner, name, ok := cleanOwnerRepo(parts[0], parts[1])
+	if !ok {
+		return "", "", bad()
+	}
+	return "", owner + "/" + name, nil
 }
+
+// cleanOwnerRepo validates an owner and repository name and strips a trailing
+// ".git" from the repository. Only characters GitHub itself allows are
+// accepted, which keeps "..", "?", "#" and similar out of the API paths and
+// the on-disk downloads directory built from these names.
+func cleanOwnerRepo(owner, name string) (string, string, bool) {
+	name = strings.TrimSuffix(name, ".git")
+	for _, s := range []string{owner, name} {
+		if s == "" || s == "." || s == ".." || s[0] == '-' || !nameRe.MatchString(s) {
+			return "", "", false
+		}
+	}
+	return owner, name, true
+}
+
+var nameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // ParseRepoArg splits a repository argument ("owner/repo" or a full URL
 // "https://host/owner/repo") into its host (empty for owner/repo) and the
@@ -303,7 +335,8 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 		// API asset endpoint: must ask for the raw bytes, otherwise it returns JSON.
 		args = append(args, "-H", "Accept: application/octet-stream")
 	}
-	args = append(args, downloadURL)
+	// "--" stops flag parsing so a URL can never be read as a gh flag.
+	args = append(args, "--", downloadURL)
 	cmd := exec.Command("gh", args...)
 
 	// Capture stderr
