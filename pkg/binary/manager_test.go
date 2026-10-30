@@ -395,7 +395,12 @@ func TestManager_InstallRefusesNameCollision(t *testing.T) {
 		t.Fatalf("original install was disturbed: %v, %v", installed, err)
 	}
 
-	// Reinstalling the same repo on the same host is still fine.
+	// Reinstalling the same repo on the same host is still fine, regardless of
+	// the case the user types (GitHub names are case-insensitive).
+	mc.host = "GHE.Example.com"
+	if err := manager.Install("https://GHE.Example.com/Test/Tool"); err != nil {
+		t.Fatalf("mixed-case reinstall: %v", err)
+	}
 	mc.host = "ghe.example.com"
 	if err := manager.Install("https://ghe.example.com/test/tool"); err != nil {
 		t.Fatalf("reinstall of same repo: %v", err)

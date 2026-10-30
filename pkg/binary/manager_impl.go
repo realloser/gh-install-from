@@ -404,10 +404,10 @@ func (m *managerImpl) findMeta(nameOrRepo string) (*metadata.BinaryMetadata, err
 	// host/owner/repo) for the binary's own host.
 	refHost, refRepo, refErr := github.ParseRepoArg(nameOrRepo)
 	for _, meta := range metaList {
-		if meta.Repository == nameOrRepo {
+		if strings.EqualFold(meta.Repository, nameOrRepo) {
 			return meta, nil
 		}
-		if refErr == nil && refRepo == meta.Repository && (refHost == "" || refHost == meta.GHHost) {
+		if refErr == nil && strings.EqualFold(refRepo, meta.Repository) && (refHost == "" || strings.EqualFold(refHost, meta.GHHost)) {
 			return meta, nil
 		}
 		binaryName := filepath.Base(meta.BinaryPath)
@@ -570,9 +570,15 @@ func (m *managerImpl) checkNameCollision(repo, host string) error {
 	if err != nil || existing == nil {
 		return nil
 	}
-	if existing.Repository != ownerRepo || (existing.GHHost != "" && host != "" && existing.GHHost != host) {
-		return fmt.Errorf("binary name %q is already installed from %s (%s); remove it first with 'gh install-from remove %s'",
-			name, existing.Repository, existing.GHHost, name)
+	// GitHub treats owner, repo and host names case-insensitively.
+	sameRepo := strings.EqualFold(existing.Repository, ownerRepo)
+	sameHost := existing.GHHost == "" || host == "" || strings.EqualFold(existing.GHHost, host)
+	if !sameRepo || !sameHost {
+		from := existing.Repository
+		if existing.GHHost != "" {
+			from += " on " + existing.GHHost
+		}
+		return fmt.Errorf("binary name %q is already installed from %s; remove it first with 'gh install-from remove %s'", name, from, name)
 	}
 	return nil
 }
