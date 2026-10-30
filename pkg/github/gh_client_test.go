@@ -644,3 +644,33 @@ func TestLooksLikeHTML(t *testing.T) {
 		}
 	}
 }
+
+func TestParseRepoArg(t *testing.T) {
+	tests := []struct {
+		arg      string
+		wantHost string
+		wantRepo string
+		wantErr  bool
+	}{
+		{"owner/repo", "", "owner/repo", false},
+		{"https://ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"https://ghe.example.com/owner/repo/releases/tag/v1", "ghe.example.com", "owner/repo", false},
+		{"ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"github.com/owner/repo", "github.com", "owner/repo", false},
+		{"ghe.example.com:8443/owner/repo", "ghe.example.com:8443", "owner/repo", false},
+		{"ghe.example.com/owner/repo/releases", "ghe.example.com", "owner/repo", false},
+		{"ghe.example.com/owner", "", "", true},
+		{"repo", "", "", true},
+		{"https://ghe.example.com/owner", "", "", true},
+	}
+	for _, tt := range tests {
+		host, repo, err := parseRepoArg(tt.arg)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseRepoArg(%q) error = %v, wantErr %v", tt.arg, err, tt.wantErr)
+			continue
+		}
+		if host != tt.wantHost || repo != tt.wantRepo {
+			t.Errorf("parseRepoArg(%q) = (%q, %q), want (%q, %q)", tt.arg, host, repo, tt.wantHost, tt.wantRepo)
+		}
+	}
+}

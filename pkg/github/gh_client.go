@@ -77,9 +77,10 @@ func newGhCliClient() (Client, error) {
 // NewGhCliClient is a variable so it can be overridden in tests
 var NewGhCliClient = newGhCliClient
 
-// parseRepoArg accepts either "owner/repo" or a full URL
-// "https://host/owner/repo" (optionally with a trailing path like /releases).
-// It returns the host (empty for owner/repo) and the owner/repo string.
+// parseRepoArg accepts "owner/repo", a full URL "https://host/owner/repo"
+// (optionally with a trailing path like /releases), or a scheme-less
+// "host/owner/repo". It returns the host (empty for owner/repo) and the
+// owner/repo string.
 func parseRepoArg(arg string) (host, repo string, err error) {
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 		u, perr := url.Parse(arg)
@@ -93,9 +94,17 @@ func parseRepoArg(arg string) (host, repo string, err error) {
 		}
 		return u.Host, parts[0] + "/" + parts[1], nil
 	}
-	// Plain owner/repo — no host, will be resolved by probing.
-	if !isValidRepo(arg) {
-		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo or https://host/owner/repo)", arg)
+	// Scheme-less host/owner/repo (e.g. github.example.com/owner/repo). GitHub
+	// owner names cannot contain dots or colons, so a first segment with one is
+	// unambiguously a host.
+	if parts := strings.Split(strings.Trim(arg, "/"), "/"); len(parts) >= 3 &&
+		strings.ContainsAny(parts[0], ".:") && parts[1] != "" && parts[2] != "" {
+		return parts[0], parts[1] + "/" + parts[2], nil
+	}
+	// Plain owner/repo — no host, will be resolved by probing. An owner with a
+	// dot or colon is a host missing its owner/repo (e.g. "host/owner").
+	if !isValidRepo(arg) || strings.ContainsAny(strings.SplitN(arg, "/", 2)[0], ".:") {
+		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo, host/owner/repo or https://host/owner/repo)", arg)
 	}
 	return "", arg, nil
 }
