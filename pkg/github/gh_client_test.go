@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -672,5 +673,71 @@ func TestParseRepoArg(t *testing.T) {
 		if host != tt.wantHost || repo != tt.wantRepo {
 			t.Errorf("parseRepoArg(%q) = (%q, %q), want (%q, %q)", tt.arg, host, repo, tt.wantHost, tt.wantRepo)
 		}
+	}
+}
+
+// TestGhCliClient_ConcurrentGetLatestRelease mirrors CheckUpdates, which shares
+// one client between worker goroutines that each resolve a different repo
+// (and so write the resolved host). Run with -race.
+func TestGhCliClient_ConcurrentGetLatestRelease(t *testing.T) {
+	tmpDir := t.TempDir()
+	err := os.WriteFile(filepath.Join(tmpDir, "gh"), []byte(`#!/bin/sh
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	echo '{"hosts":{"github.com":[{"state":"success","active":false,"host":"github.com","login":"user"}],"git.enterprise.com":[{"state":"success","active":true,"host":"git.enterprise.com","login":"user"}]}}'
+	exit 0
+fi
+if [ "$1" = "api" ]; then
+	host="github.com"
+	if [ "$2" = "--hostname" ]; then
+		host="$3"
+	fi
+	if [ "$host" = "git.enterprise.com" ] && echo "$@" | grep -q "repos/acme/internal/releases/latest"; then
+		echo '{"tag_name":"v2.0.0","assets":[]}'
+		exit 0
+	fi
+	if [ "$host" = "github.com" ] && echo "$@" | grep -q "repos/acme/public/releases/latest"; then
+		echo '{"tag_name":"v1.0.0","assets":[]}'
+		exit 0
+	fi
+	echo "gh: Not Found (HTTP 404)" >&2
+	exit 1
+fi
+exit 1
+`), 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", tmpDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	client, err := newGhCliClient()
+	if err != nil {
+		t.Fatalf("newGhCliClient: %v", err)
+	}
+
+	cases := []struct{ repo, tag string }{
+		{"acme/internal", "v2.0.0"},
+		{"acme/public", "v1.0.0"},
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 16)
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func(c struct{ repo, tag string }) {
+			defer wg.Done()
+			rel, err := client.GetLatestRelease(c.repo)
+			if err != nil {
+				errs <- fmt.Errorf("%s: %w", c.repo, err)
+				return
+			}
+			if rel.TagName != c.tag {
+				errs <- fmt.Errorf("%s: tag = %s, want %s", c.repo, rel.TagName, c.tag)
+			}
+			_ = client.GetHost()
+		}(cases[i%2])
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }

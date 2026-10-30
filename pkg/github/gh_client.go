@@ -52,7 +52,24 @@ var _ Client = (*ghCliClient)(nil)
 
 // ghCliClient implements the Client interface using gh cli commands
 type ghCliClient struct {
+	// mu guards host: CheckUpdates shares one client between worker goroutines
+	// that each resolve (and so record) the host of a different repository.
+	mu   sync.RWMutex
 	host string
+}
+
+// currentHost returns the host recorded by the last resolution.
+func (c *ghCliClient) currentHost() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.host
+}
+
+// setHost records the host a repository was resolved on.
+func (c *ghCliClient) setHost(h string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.host = h
 }
 
 // newGhCliClient creates a new GitHub client using gh cli. The host is
@@ -143,14 +160,14 @@ func (c *ghCliClient) GetLatestRelease(repoArg string) (*Release, error) {
 		if !ok {
 			return nil, fmt.Errorf("repository %s not found on host %s", repo, host)
 		}
-		c.host = host
+		c.setHost(host)
 		return release, nil
 	}
 
 	hosts, err := authenticatedHosts()
 	if err != nil || len(hosts) == 0 {
 		// No enumerable hosts — fall back to the single current host.
-		hosts = []string{c.host}
+		hosts = []string{c.currentHost()}
 	}
 
 	// Probe every host concurrently and collect matches. A 404 means "not on
@@ -203,8 +220,8 @@ func (c *ghCliClient) GetLatestRelease(repoArg string) (*Release, error) {
 	case 0:
 		return nil, fmt.Errorf("repository %s not found on any authenticated host (%s)\n\nCheck that:\n  - the repository name is correct (owner/repo)\n  - you are authenticated to the right host: 'gh auth status'\n  - the repository is not private or you have access", repo, strings.Join(hosts, ", "))
 	case 1:
-		c.host = matches[0].host // remember the winning host for download + metadata
-		slog.Info("resolved to host", "host", c.host)
+		c.setHost(matches[0].host) // remember the winning host for download + metadata
+		slog.Info("resolved to host", "host", matches[0].host)
 		return matches[0].release, nil
 	default:
 		// Ambiguous: the repo exists on multiple hosts. Abort with a
@@ -264,7 +281,7 @@ func isNotFound(stderr string) bool {
 
 // GetHost implements Client.GetHost
 func (c *ghCliClient) GetHost() string {
-	return c.host
+	return c.currentHost()
 }
 
 // DownloadAsset implements Client.DownloadAsset using gh api
@@ -279,8 +296,8 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	// Pass --hostname so the download uses the resolved host's auth (asset URLs
 	// are host-specific).
 	args := []string{"api"}
-	if c.host != "" && c.host != "github.com" {
-		args = append(args, "--hostname", c.host)
+	if host := c.currentHost(); host != "" && host != "github.com" {
+		args = append(args, "--hostname", host)
 	}
 	if strings.Contains(downloadURL, "/releases/assets/") {
 		// API asset endpoint: must ask for the raw bytes, otherwise it returns JSON.
@@ -332,7 +349,7 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	}
 
 	if looksLikeHTML(destPath) {
-		return fmt.Errorf("downloaded an HTML page instead of the asset from %s (authentication or SSO required for host %q? try 'gh auth status')", downloadURL, c.host)
+		return fmt.Errorf("downloaded an HTML page instead of the asset from %s (authentication or SSO required for host %q? try 'gh auth status')", downloadURL, c.currentHost())
 	}
 
 	// Make the file executable
