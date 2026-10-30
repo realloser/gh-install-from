@@ -10,10 +10,8 @@ LDFLAGS=-ldflags="-X 'github.com/realloser/gh-install-from/pkg/version.Version=$
 
 # Supported platforms
 PLATFORMS=darwin/amd64 darwin/arm64 linux/386 linux/amd64 linux/arm linux/arm64 windows/386 windows/amd64
-BINARY_NAMES=$(foreach PLATFORM,$(PLATFORMS),$(BINARY_NAME)-$(word 1,$(subst /, ,$(PLATFORM)))-$(word 2,$(subst /, ,$(PLATFORM))))
-
-# Generate platform-specific targets
-PLATFORM_TARGETS=$(foreach PLATFORM,$(PLATFORMS),dist/$(BINARY_NAME)_$(word 1,$(subst /, ,$(PLATFORM)))_$(word 2,$(subst /, ,$(PLATFORM))).tar.gz)
+# Windows binaries get an .exe suffix (required by `gh extension install`)
+BINARY_NAMES=$(foreach PLATFORM,$(PLATFORMS),$(BINARY_NAME)-$(word 1,$(subst /, ,$(PLATFORM)))-$(word 2,$(subst /, ,$(PLATFORM)))$(if $(filter windows,$(word 1,$(subst /, ,$(PLATFORM)))),.exe))
 
 # Tools
 GOLANGCI_LINT = $(shell command -v golangci-lint 2> /dev/null)
@@ -97,18 +95,12 @@ tidy-up:
 binaries: $(foreach BINARY,$(BINARY_NAMES),dist/$(BINARY))
 	@echo "Build binaries: $^"
 
-dist/$(BINARY_NAME)%: tidy-up
-	GOOS=$(word 4,$(subst -, ,$(notdir $(basename $@)))) \
-	GOARCH=$(word 5,$(subst -, ,$(notdir $(basename $@)))) \
-	EXT=$(if $(findstring windows,$(word 4,$(subst -, ,$(notdir $(basename $@))))),.exe,)
-	@echo "Building binary: $@$(EXT)"
-	go build $(LDFLAGS) -o $@$(EXT)
-
-# Pattern rule for creating tarballs
-dist/%.tar.gz: dist/%/$(BINARY_NAME)%
-	cd dist/$(notdir $(basename $@)) && \
-	tar -czf ../$(notdir $@) \
-		$(BINARY_NAME)$(if $(findstring windows,$(word 1,$(subst _, ,$(notdir $(basename $@))))),.exe,)
+# $* is "<os>-<arch>[.exe]". GOOS/GOARCH must be on the same shell line as
+# `go build`, otherwise they are not exported and the host platform is built.
+dist/$(BINARY_NAME)-%: tidy-up
+	@echo "Building binary: $@"
+	CGO_ENABLED=0 GOOS=$(word 1,$(subst -, ,$*)) GOARCH=$(basename $(word 2,$(subst -, ,$*))) \
+		go build $(LDFLAGS) -o $@
 
 .PHONY: tag
 tag:
@@ -127,7 +119,6 @@ jobs:
 verbose:
 	@echo "Running with $(MAKEFLAGS) jobs"
 	@echo "Platforms: $(PLATFORMS)"
-	@echo "Platform targets: $(PLATFORM_TARGETS)"
 	@echo "BINARY_NAMES: $(BINARY_NAMES)"
 
 .PHONY: help
