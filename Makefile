@@ -47,7 +47,7 @@ lint: lint-tools lint-golangci lint-go lint-sec lint-imports lint-fmt
 lint-tools:
 	@if [ -z "$(GOLANGCI_LINT)" ]; then \
 		echo "Installing golangci-lint..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0; \
 	fi
 	@if [ -z "$(GOSEC)" ]; then \
 		echo "Installing gosec..."; \
