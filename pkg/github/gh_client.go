@@ -22,6 +22,19 @@ type Release struct {
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	// URL is the API endpoint of the asset (…/releases/assets/<id>). Unlike
+	// BrowserDownloadURL it works with token auth on private repos and hosts
+	// behind SSO, when requested with Accept: application/octet-stream.
+	URL string `json:"url"`
+}
+
+// DownloadURL returns the best URL to download the asset from: the API
+// endpoint when known, otherwise the browser download URL.
+func (a Asset) DownloadURL() string {
+	if a.URL != "" {
+		return a.URL
+	}
+	return a.BrowserDownloadURL
 }
 
 // Client defines the interface for GitHub API operations
@@ -64,9 +77,10 @@ func newGhCliClient() (Client, error) {
 // NewGhCliClient is a variable so it can be overridden in tests
 var NewGhCliClient = newGhCliClient
 
-// parseRepoArg accepts either "owner/repo" or a full URL
-// "https://host/owner/repo" (optionally with a trailing path like /releases).
-// It returns the host (empty for owner/repo) and the owner/repo string.
+// parseRepoArg accepts "owner/repo", a full URL "https://host/owner/repo"
+// (optionally with a trailing path like /releases), or a scheme-less
+// "host/owner/repo". It returns the host (empty for owner/repo) and the
+// owner/repo string.
 func parseRepoArg(arg string) (host, repo string, err error) {
 	if strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://") {
 		u, perr := url.Parse(arg)
@@ -80,11 +94,26 @@ func parseRepoArg(arg string) (host, repo string, err error) {
 		}
 		return u.Host, parts[0] + "/" + parts[1], nil
 	}
-	// Plain owner/repo — no host, will be resolved by probing.
-	if !isValidRepo(arg) {
-		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo or https://host/owner/repo)", arg)
+	// Scheme-less host/owner/repo (e.g. github.example.com/owner/repo). GitHub
+	// owner names cannot contain dots or colons, so a first segment with one is
+	// unambiguously a host.
+	if parts := strings.Split(strings.Trim(arg, "/"), "/"); len(parts) >= 3 &&
+		strings.ContainsAny(parts[0], ".:") && parts[1] != "" && parts[2] != "" {
+		return parts[0], parts[1] + "/" + parts[2], nil
+	}
+	// Plain owner/repo — no host, will be resolved by probing. An owner with a
+	// dot or colon is a host missing its owner/repo (e.g. "host/owner").
+	if !isValidRepo(arg) || strings.ContainsAny(strings.SplitN(arg, "/", 2)[0], ".:") {
+		return "", "", fmt.Errorf("invalid repository format: %s (use owner/repo, host/owner/repo or https://host/owner/repo)", arg)
 	}
 	return "", arg, nil
+}
+
+// ParseRepoArg splits a repository argument ("owner/repo" or a full URL
+// "https://host/owner/repo") into its host (empty for owner/repo) and the
+// "owner/repo" part.
+func ParseRepoArg(arg string) (host, repo string, err error) {
+	return parseRepoArg(arg)
 }
 
 // GetLatestRelease implements Client.GetLatestRelease using gh api. The repo
@@ -253,6 +282,10 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	if c.host != "" && c.host != "github.com" {
 		args = append(args, "--hostname", c.host)
 	}
+	if strings.Contains(downloadURL, "/releases/assets/") {
+		// API asset endpoint: must ask for the raw bytes, otherwise it returns JSON.
+		args = append(args, "-H", "Accept: application/octet-stream")
+	}
 	args = append(args, downloadURL)
 	cmd := exec.Command("gh", args...)
 
@@ -298,12 +331,30 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 		return fmt.Errorf("failed to download asset: %w", err)
 	}
 
+	if looksLikeHTML(destPath) {
+		return fmt.Errorf("downloaded an HTML page instead of the asset from %s (authentication or SSO required for host %q? try 'gh auth status')", downloadURL, c.host)
+	}
+
 	// Make the file executable
 	if err := os.Chmod(destPath, 0755); err != nil {
 		return fmt.Errorf("failed to make file executable: %w", err)
 	}
 
 	return nil
+}
+
+// looksLikeHTML reports whether the file starts with an HTML document, which
+// means a login/SSO page was downloaded instead of a release asset.
+func looksLikeHTML(p string) bool {
+	f, err := os.Open(p) // #nosec G304 -- path is the download destination we just wrote
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	head := strings.ToLower(strings.TrimSpace(string(buf[:n])))
+	return strings.HasPrefix(head, "<!doctype html") || strings.HasPrefix(head, "<html")
 }
 
 // isValidRepo checks if a repository string is in the correct format (owner/repo)

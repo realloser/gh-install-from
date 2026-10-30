@@ -613,3 +613,64 @@ exit 1
 		t.Errorf("host = %s, want git.enterprise.com", host)
 	}
 }
+
+func TestAsset_DownloadURL(t *testing.T) {
+	if got := (Asset{BrowserDownloadURL: "https://h/b", URL: "https://h/api"}).DownloadURL(); got != "https://h/api" {
+		t.Errorf("DownloadURL() = %q, want API URL", got)
+	}
+	if got := (Asset{BrowserDownloadURL: "https://h/b"}).DownloadURL(); got != "https://h/b" {
+		t.Errorf("DownloadURL() = %q, want browser URL fallback", got)
+	}
+}
+
+func TestLooksLikeHTML(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]struct {
+		content string
+		want    bool
+	}{
+		"doctype": {"\n<!DOCTYPE html>\n<html>", true},
+		"html":    {"<HTML lang=en>", true},
+		"elf":     {"\x7fELF\x02\x01\x01", false},
+		"script":  {"#!/bin/sh\necho hi\n", false},
+	}
+	for name, tc := range cases {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(tc.content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := looksLikeHTML(p); got != tc.want {
+			t.Errorf("%s: looksLikeHTML = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func TestParseRepoArg(t *testing.T) {
+	tests := []struct {
+		arg      string
+		wantHost string
+		wantRepo string
+		wantErr  bool
+	}{
+		{"owner/repo", "", "owner/repo", false},
+		{"https://ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"https://ghe.example.com/owner/repo/releases/tag/v1", "ghe.example.com", "owner/repo", false},
+		{"ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"github.com/owner/repo", "github.com", "owner/repo", false},
+		{"ghe.example.com:8443/owner/repo", "ghe.example.com:8443", "owner/repo", false},
+		{"ghe.example.com/owner/repo/releases", "ghe.example.com", "owner/repo", false},
+		{"ghe.example.com/owner", "", "", true},
+		{"repo", "", "", true},
+		{"https://ghe.example.com/owner", "", "", true},
+	}
+	for _, tt := range tests {
+		host, repo, err := parseRepoArg(tt.arg)
+		if (err != nil) != tt.wantErr {
+			t.Errorf("parseRepoArg(%q) error = %v, wantErr %v", tt.arg, err, tt.wantErr)
+			continue
+		}
+		if host != tt.wantHost || repo != tt.wantRepo {
+			t.Errorf("parseRepoArg(%q) = (%q, %q), want (%q, %q)", tt.arg, host, repo, tt.wantHost, tt.wantRepo)
+		}
+	}
+}
