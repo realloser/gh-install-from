@@ -47,8 +47,8 @@ func (s *UnixFSService) InstallBinary(binDir, binaryName, targetPath string) err
 	// Build the new link beside the old one and rename it into place. rename(2)
 	// swaps atomically, so the command never disappears mid-update and a failed
 	// attempt leaves the previous version untouched.
+	removeStaleTempLinks(linkPath)
 	tmpLink := fmt.Sprintf("%s.tmp-%d", linkPath, os.Getpid())
-	_ = os.Remove(tmpLink)
 	if err := os.Symlink(targetPath, tmpLink); err != nil {
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", linkPath, targetPath, err)
 	}
@@ -71,4 +71,19 @@ func (s *UnixFSService) RemoveBinary(binDir, binaryName string) error {
 	}
 	slog.Debug("symlink removed", "link", linkPath)
 	return nil
+}
+
+// removeStaleTempLinks deletes "<link>.tmp-<pid>" symlinks left behind by an
+// install that was killed between creating the temporary link and renaming it.
+// Only symlinks are removed.
+func removeStaleTempLinks(linkPath string) {
+	matches, err := filepath.Glob(linkPath + ".tmp-*")
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if fi, err := os.Lstat(m); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			_ = os.Remove(m)
+		}
+	}
 }

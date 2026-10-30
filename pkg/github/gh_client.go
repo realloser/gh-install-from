@@ -123,7 +123,7 @@ func parseRepoArg(arg string) (host, repo string, err error) {
 	// Scheme-less host/owner/repo (e.g. github.example.com/owner/repo). GitHub
 	// owner names cannot contain dots or colons, so a first segment with one is
 	// unambiguously a host.
-	if len(parts) == 3 && strings.ContainsAny(parts[0], ".:") {
+	if len(parts) >= 3 && strings.ContainsAny(parts[0], ".:") {
 		owner, name, ok := cleanOwnerRepo(parts[1], parts[2])
 		if !ok {
 			return "", "", bad()
@@ -405,12 +405,6 @@ func looksLikeHTML(p string) bool {
 	n, _ := f.Read(buf)
 	head := strings.ToLower(strings.TrimSpace(string(buf[:n])))
 	return strings.HasPrefix(head, "<!doctype html") || strings.HasPrefix(head, "<html")
-}
-
-// isValidRepo checks if a repository string is in the correct format (owner/repo)
-func isValidRepo(repo string) bool {
-	// Must be owner/repo: non-empty, contains a slash, doesn't start/end with one.
-	return len(repo) > 0 && repo[0] != '/' && repo[len(repo)-1] != '/' && len(repo) < 256 && strings.Contains(repo, "/")
 }
 
 // GetLatestRelease is a convenience function that creates a new client and gets the latest release

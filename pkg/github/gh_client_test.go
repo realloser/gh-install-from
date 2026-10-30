@@ -372,48 +372,6 @@ fi
 	}
 }
 
-func TestIsValidRepo(t *testing.T) {
-	tests := []struct {
-		name string
-		repo string
-		want bool
-	}{
-		{
-			name: "empty repo",
-			repo: "",
-			want: false,
-		},
-		{
-			name: "starts with slash",
-			repo: "/owner/repo",
-			want: false,
-		},
-		{
-			name: "ends with slash",
-			repo: "owner/repo/",
-			want: false,
-		},
-		{
-			name: "valid format",
-			repo: "owner/repo",
-			want: true,
-		},
-		{
-			name: "too long",
-			repo: "a/b" + string(make([]byte, 256)),
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidRepo(tt.repo); got != tt.want {
-				t.Errorf("isValidRepo() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 // TestGetLatestRelease_MultiHostProbe verifies the core multi-host behavior:
 // when a repo is not found on the first host (404), the client probes the next
 // authenticated host and succeeds there. This is the regression guard for the
@@ -659,7 +617,7 @@ func TestParseRepoArg(t *testing.T) {
 		{"ghe.example.com/owner/repo", "ghe.example.com", "owner/repo", false},
 		{"github.com/owner/repo", "github.com", "owner/repo", false},
 		{"ghe.example.com:8443/owner/repo", "ghe.example.com:8443", "owner/repo", false},
-		{"ghe.example.com/owner/repo/releases", "", "", true},
+		{"ghe.example.com/owner/repo/releases", "ghe.example.com", "owner/repo", false},
 		{"GHE.Example.com/owner/repo", "ghe.example.com", "owner/repo", false},
 		{"https://GHE.Example.com/owner/repo.git", "ghe.example.com", "owner/repo", false},
 		{"owner/repo.git", "", "owner/repo", false},

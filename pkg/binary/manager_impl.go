@@ -82,6 +82,14 @@ func ConfigureQuarantine(m Manager, c Confirmer, remove bool) Manager {
 }
 
 func (m *managerImpl) Install(repo string) error {
+	// Fail fast, before any network call, when the argument already names the
+	// host. For a bare owner/repo the host is only known after resolution, so
+	// the check is repeated below.
+	if argHost, _, perr := github.ParseRepoArg(repo); perr == nil && argHost != "" {
+		if err := m.checkNameCollision(repo, argHost); err != nil {
+			return err
+		}
+	}
 	slog.Info("fetching latest release", "repo", repo)
 	release, err := m.client.GetLatestRelease(repo)
 	if err != nil {

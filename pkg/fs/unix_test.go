@@ -109,3 +109,17 @@ func TestUnixFSService_InstallBinary_LeavesNoTempLinkAndKeepsOldOnFailure(t *tes
 		t.Errorf("expected only the final link in binDir, got %d entries", len(entries))
 	}
 }
+
+func TestUnixFSService_InstallBinary_RemovesStaleTempLinks(t *testing.T) {
+	binDir := t.TempDir()
+	stale := filepath.Join(binDir, "tool.tmp-99999")
+	if err := os.Symlink("/gone", stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewUnixFSService().InstallBinary(binDir, "tool", "/new/target"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale temp link was not removed: %v", err)
+	}
+}
