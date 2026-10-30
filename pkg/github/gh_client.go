@@ -22,6 +22,19 @@ type Release struct {
 type Asset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
+	// URL is the API endpoint of the asset (…/releases/assets/<id>). Unlike
+	// BrowserDownloadURL it works with token auth on private repos and hosts
+	// behind SSO, when requested with Accept: application/octet-stream.
+	URL string `json:"url"`
+}
+
+// DownloadURL returns the best URL to download the asset from: the API
+// endpoint when known, otherwise the browser download URL.
+func (a Asset) DownloadURL() string {
+	if a.URL != "" {
+		return a.URL
+	}
+	return a.BrowserDownloadURL
 }
 
 // Client defines the interface for GitHub API operations
@@ -260,6 +273,10 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 	if c.host != "" && c.host != "github.com" {
 		args = append(args, "--hostname", c.host)
 	}
+	if strings.Contains(downloadURL, "/releases/assets/") {
+		// API asset endpoint: must ask for the raw bytes, otherwise it returns JSON.
+		args = append(args, "-H", "Accept: application/octet-stream")
+	}
 	args = append(args, downloadURL)
 	cmd := exec.Command("gh", args...)
 
@@ -305,12 +322,30 @@ func (c *ghCliClient) DownloadAsset(downloadURL, destPath string) error {
 		return fmt.Errorf("failed to download asset: %w", err)
 	}
 
+	if looksLikeHTML(destPath) {
+		return fmt.Errorf("downloaded an HTML page instead of the asset from %s (authentication or SSO required for host %q? try 'gh auth status')", downloadURL, c.host)
+	}
+
 	// Make the file executable
 	if err := os.Chmod(destPath, 0755); err != nil {
 		return fmt.Errorf("failed to make file executable: %w", err)
 	}
 
 	return nil
+}
+
+// looksLikeHTML reports whether the file starts with an HTML document, which
+// means a login/SSO page was downloaded instead of a release asset.
+func looksLikeHTML(p string) bool {
+	f, err := os.Open(p) // #nosec G304 -- path is the download destination we just wrote
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	head := strings.ToLower(strings.TrimSpace(string(buf[:n])))
+	return strings.HasPrefix(head, "<!doctype html") || strings.HasPrefix(head, "<html")
 }
 
 // isValidRepo checks if a repository string is in the correct format (owner/repo)

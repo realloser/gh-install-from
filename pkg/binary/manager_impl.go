@@ -111,7 +111,7 @@ func (m *managerImpl) Install(repo string) error {
 	}
 	tmpPath := filepath.Join(srcSubDir, asset.Name)
 	slog.Info("downloading asset", "name", asset.Name)
-	if err := m.client.DownloadAsset(asset.BrowserDownloadURL, tmpPath); err != nil {
+	if err := m.client.DownloadAsset(asset.DownloadURL(), tmpPath); err != nil {
 		return fmt.Errorf("failed to download asset: %w", err)
 	}
 

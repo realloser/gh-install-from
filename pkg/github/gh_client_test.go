@@ -613,3 +613,34 @@ exit 1
 		t.Errorf("host = %s, want git.enterprise.com", host)
 	}
 }
+
+func TestAsset_DownloadURL(t *testing.T) {
+	if got := (Asset{BrowserDownloadURL: "https://h/b", URL: "https://h/api"}).DownloadURL(); got != "https://h/api" {
+		t.Errorf("DownloadURL() = %q, want API URL", got)
+	}
+	if got := (Asset{BrowserDownloadURL: "https://h/b"}).DownloadURL(); got != "https://h/b" {
+		t.Errorf("DownloadURL() = %q, want browser URL fallback", got)
+	}
+}
+
+func TestLooksLikeHTML(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]struct {
+		content string
+		want    bool
+	}{
+		"doctype": {"\n<!DOCTYPE html>\n<html>", true},
+		"html":    {"<HTML lang=en>", true},
+		"elf":     {"\x7fELF\x02\x01\x01", false},
+		"script":  {"#!/bin/sh\necho hi\n", false},
+	}
+	for name, tc := range cases {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(tc.content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := looksLikeHTML(p); got != tc.want {
+			t.Errorf("%s: looksLikeHTML = %v, want %v", name, got, tc.want)
+		}
+	}
+}
