@@ -1,48 +1,49 @@
+version: "2"
+
 run:
   timeout: 5m
   modules-download-mode: readonly
 
 linters:
   enable:
-    - gofmt
-    - goimports
     - gosec
-    - govet
-    - ineffassign
     - misspell
     - revive
-    - staticcheck
-    - typecheck
-    - unused
+  exclusions:
+    # restore golangci-lint v1 default exclusions
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+      # G302/G306: file permissions >0600 — intentional for executables
+      # G304: file inclusion via variable — inherent to a binary installer
+      # G204: subprocess with variable — intentional quarantine detection
+      # G115: integer overflow — safe in archive extraction
+      # G110: decompression bomb — acceptable for trusted GitHub releases
+      # G104: unhandled errors — deliberate Close() ignores
+      - linters:
+          - gosec
+        text: "G302|G306|G304|G204|G115|G110|G104"
+      # revive: style preferences, not correctness issues
+      - linters:
+          - revive
+        text: "unused-parameter|exported|package-comments|var-naming"
 
-linters-settings:
-  goimports:
-    local-prefixes: github.com/realloser/gh-install-from
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/realloser/gh-install-from
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-    # G302/G306: file permissions >0600 — intentional for executables
-    # G304: file inclusion via variable — inherent to a binary installer
-    # G204: subprocess with variable — intentional quarantine detection
-    # G115: integer overflow — safe in archive extraction
-    # G110: decompression bomb — acceptable for trusted GitHub releases
-    # G104: unhandled errors — deliberate Close() ignores
-    - linters:
-        - gosec
-      text: "G302|G306|G304|G204|G115|G110|G104"
-    # revive: style preferences, not correctness issues
-    - linters:
-        - revive
-      text: "unused-parameter|exported|package-comments|var-naming"
-
   max-issues-per-linter: 0
   max-same-issues: 0
-
-output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
