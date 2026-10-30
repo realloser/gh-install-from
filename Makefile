@@ -102,6 +102,21 @@ dist/$(BINARY_NAME)-%: tidy-up
 	CGO_ENABLED=0 GOOS=$(word 1,$(subst -, ,$*)) GOARCH=$(basename $(word 2,$(subst -, ,$*))) \
 		go build $(LDFLAGS) -o $@
 
+# Fail if any binary in dist/ is not built for its advertised OS/arch
+.PHONY: verify-binaries
+verify-binaries:
+	@cd dist && fail=0; \
+	check() { file "$$1" | grep -q "$$2" || { echo "::error::$$1 is not $$2"; file "$$1"; fail=1; }; }; \
+	check $(BINARY_NAME)-darwin-amd64 "Mach-O 64-bit.*x86_64"; \
+	check $(BINARY_NAME)-darwin-arm64 "Mach-O 64-bit.*arm64"; \
+	check $(BINARY_NAME)-linux-386 "ELF 32-bit.*80386"; \
+	check $(BINARY_NAME)-linux-amd64 "ELF 64-bit.*x86-64"; \
+	check $(BINARY_NAME)-linux-arm "ELF 32-bit.*ARM"; \
+	check $(BINARY_NAME)-linux-arm64 "ELF 64-bit.*ARM aarch64"; \
+	check $(BINARY_NAME)-windows-386.exe "PE32 executable.*80386"; \
+	check $(BINARY_NAME)-windows-amd64.exe "PE32+ executable.*x86-64"; \
+	exit $$fail
+
 .PHONY: tag
 tag:
 	@if [ "$(TAG)" = "" ]; then echo "Please specify TAG=X.Y.Z"; exit 1; fi
@@ -132,6 +147,7 @@ help:
 	@echo "  lint        - Run all linters"
 	@echo "  fix         - Fix common linting issues automatically"
 	@echo "  binaries    - Build release artifacts for all platforms"
+	@echo "  verify-binaries - Check dist/ binaries match their OS/arch"
 	@echo "  tag         - Create a new version tag (TAG=X.Y.Z)"
 	@echo "  jobs        - Show parallel job count"
 	@echo ""

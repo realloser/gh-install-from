@@ -52,17 +52,7 @@ jobs:
         run: make -j$(nproc) binaries
 
       - name: Verify binary formats
-        run: |
-          cd dist
-          check() { file "$1" | grep -q "$2" || { echo "::error::$1 is not $2"; file "$1"; exit 1; }; }
-          check gh-install-from-darwin-amd64 "Mach-O 64-bit.*x86_64"
-          check gh-install-from-darwin-arm64 "Mach-O 64-bit.*arm64"
-          check gh-install-from-linux-386 "ELF 32-bit.*Intel 80386"
-          check gh-install-from-linux-amd64 "ELF 64-bit.*x86-64"
-          check gh-install-from-linux-arm "ELF 32-bit.*ARM"
-          check gh-install-from-linux-arm64 "ELF 64-bit.*ARM aarch64"
-          check gh-install-from-windows-386.exe "PE32 executable.*80386"
-          check gh-install-from-windows-amd64.exe "PE32+ executable.*x86-64"
+        run: make verify-binaries
 
       - name: Generate checksums
         run: |
