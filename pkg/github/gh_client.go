@@ -87,6 +87,13 @@ func parseRepoArg(arg string) (host, repo string, err error) {
 	return "", arg, nil
 }
 
+// ParseRepoArg splits a repository argument ("owner/repo" or a full URL
+// "https://host/owner/repo") into its host (empty for owner/repo) and the
+// "owner/repo" part.
+func ParseRepoArg(arg string) (host, repo string, err error) {
+	return parseRepoArg(arg)
+}
+
 // GetLatestRelease implements Client.GetLatestRelease using gh api. The repo
 // argument may be either "owner/repo" (auto-resolved across authenticated
 // hosts) or a full URL "https://host/owner/repo" (pins the host directly).

@@ -120,10 +120,12 @@ func (m *managerImpl) Install(repo string) error {
 		return fmt.Errorf("failed to process downloaded file: %w", err)
 	}
 
-	parts := strings.Split(repo, "/")
-	if len(parts) != 2 {
+	// repo may be a full URL (https://host/owner/repo); derive owner/repo from it.
+	_, ownerRepo, err := github.ParseRepoArg(repo)
+	if err != nil {
 		return fmt.Errorf("invalid repository format: %s\n\nUse owner/repo (e.g. BurntSushi/ripgrep) or a full URL (e.g. https://github.com/BurntSushi/ripgrep)", repo)
 	}
+	parts := strings.Split(ownerRepo, "/")
 	owner, repoName := parts[0], parts[1]
 	tag := strings.TrimPrefix(release.TagName, "v")
 
@@ -143,7 +145,7 @@ func (m *managerImpl) Install(repo string) error {
 		}
 	}
 
-	binaryName := getBinaryName(repo)
+	binaryName := getBinaryName(ownerRepo)
 	binDir := m.pathMgr.GetBinDir()
 	slog.Info("installing binary", "name", binaryName)
 	if err := m.osSvc.InstallBinary(binDir, binaryName, targetPath); err != nil {
@@ -413,6 +415,9 @@ func findMatchingAsset(assets []github.Asset) (*github.Asset, error) {
 			strings.HasSuffix(name, ".asc") || strings.HasSuffix(name, ".sig") || strings.HasSuffix(name, ".md5") {
 			continue
 		}
+		if isChecksumAsset(name) {
+			continue
+		}
 		if strings.HasPrefix(name, "gh-") {
 			ghExtensions = append(ghExtensions, asset.Name)
 			continue
@@ -457,6 +462,14 @@ func findMatchingAsset(assets []github.Asset) (*github.Asset, error) {
 		errMsg.WriteString("\nFound GitHub CLI extensions that were skipped.\n")
 	}
 	return nil, fmt.Errorf("%s", errMsg.String())
+}
+
+// isChecksumAsset reports whether a (lowercased) asset name is a checksum
+// manifest such as checksums.txt or SHA256SUMS, which is never an installable
+// binary.
+func isChecksumAsset(name string) bool {
+	return strings.Contains(name, "checksum") || strings.Contains(name, "sha256sums") ||
+		strings.Contains(name, "sha512sums") || name == "sums.txt"
 }
 
 // isPlatformTagged reports whether an asset name embeds any OS or arch token

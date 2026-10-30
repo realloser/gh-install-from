@@ -227,6 +227,45 @@ func TestManager_Install(t *testing.T) {
 			},
 		},
 		{
+			name: "full URL on a non-default host",
+			repo: "https://git.example.com/test/repo",
+			mockSetup: func() *mockClient {
+				return &mockClient{
+					host: "git.example.com",
+					latestRelease: &github.Release{
+						TagName: "v1.0.0",
+						Assets: []github.Asset{
+							{
+								Name:               fmt.Sprintf("test-binary_%s_%s.tar.gz", osName, archName),
+								BrowserDownloadURL: "https://example.com/test-binary",
+							},
+						},
+					},
+				}
+			},
+			wantErr: false,
+		},
+		{
+			name: "checksums file is never installed as the binary",
+			repo: "test/gh-extension",
+			mockSetup: func() *mockClient {
+				return &mockClient{
+					host: "github.com",
+					latestRelease: &github.Release{
+						TagName: "v1.0.0",
+						Assets: []github.Asset{
+							{Name: "checksums.txt", BrowserDownloadURL: "https://example.com/checksums.txt"},
+							{Name: fmt.Sprintf("gh-extension-%s-%s", osName, archName), BrowserDownloadURL: "https://example.com/gh-extension"},
+						},
+					},
+				}
+			},
+			wantErr: true,
+			errCheck: func(err error) bool {
+				return strings.Contains(err.Error(), "no matching binary found")
+			},
+		},
+		{
 			name: "failed to get latest release",
 			repo: "test/repo",
 			mockSetup: func() *mockClient {
