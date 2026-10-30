@@ -91,6 +91,12 @@ func (m *managerImpl) Install(repo string) error {
 		return fmt.Errorf("repository %s has no assets in its latest release\n\nThis may be a source-only release. Check the release page for downloadable binaries", repo)
 	}
 
+	// Refuse to take over a command name that belongs to a different repo or
+	// host: a same-named binary would silently replace it (and its metadata).
+	if err := m.checkNameCollision(repo, m.client.GetHost()); err != nil {
+		return err
+	}
+
 	asset, err := findMatchingAsset(release.Assets)
 	if err != nil {
 		return fmt.Errorf("failed to find matching asset for %s: %w\n\nNo asset matched your OS (%s) and arch (%s). Check the release page for available assets, or pass a full URL to a specific asset", repo, err, runtime.GOOS, runtime.GOARCH)
@@ -547,6 +553,26 @@ func copyFile(src, dst string) error {
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err
+	}
+	return nil
+}
+
+// checkNameCollision fails when the binary name derived from repo is already
+// installed from a different owner/repo or host. Reinstalling or updating the
+// same repo on the same host is allowed.
+func (m *managerImpl) checkNameCollision(repo, host string) error {
+	_, ownerRepo, err := github.ParseRepoArg(repo)
+	if err != nil {
+		return nil // reported later with a proper message
+	}
+	name := getBinaryName(ownerRepo)
+	existing, err := m.store.Load(name)
+	if err != nil || existing == nil {
+		return nil
+	}
+	if existing.Repository != ownerRepo || (existing.GHHost != "" && host != "" && existing.GHHost != host) {
+		return fmt.Errorf("binary name %q is already installed from %s (%s); remove it first with 'gh install-from remove %s'",
+			name, existing.Repository, existing.GHHost, name)
 	}
 	return nil
 }
