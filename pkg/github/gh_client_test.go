@@ -252,7 +252,7 @@ func TestGhCliClient_DownloadAsset(t *testing.T) {
 	// Create a mock gh command
 	mockGh := filepath.Join(tmpDir, "gh")
 	err = os.WriteFile(mockGh, []byte(`#!/bin/sh
-if [ "$1" = "api" ] && [ "$2" = "https://example.com/test.tar.gz" ]; then
+if [ "$1" = "api" ] && [ "$2" = "--" ] && [ "$3" = "https://example.com/test.tar.gz" ]; then
 	echo "test data"
 	exit 0
 else
@@ -367,48 +367,6 @@ fi
 			_, err := GetLatestRelease(tt.repo)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetLatestRelease() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestIsValidRepo(t *testing.T) {
-	tests := []struct {
-		name string
-		repo string
-		want bool
-	}{
-		{
-			name: "empty repo",
-			repo: "",
-			want: false,
-		},
-		{
-			name: "starts with slash",
-			repo: "/owner/repo",
-			want: false,
-		},
-		{
-			name: "ends with slash",
-			repo: "owner/repo/",
-			want: false,
-		},
-		{
-			name: "valid format",
-			repo: "owner/repo",
-			want: true,
-		},
-		{
-			name: "too long",
-			repo: "a/b" + string(make([]byte, 256)),
-			want: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isValidRepo(tt.repo); got != tt.want {
-				t.Errorf("isValidRepo() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -660,6 +618,16 @@ func TestParseRepoArg(t *testing.T) {
 		{"github.com/owner/repo", "github.com", "owner/repo", false},
 		{"ghe.example.com:8443/owner/repo", "ghe.example.com:8443", "owner/repo", false},
 		{"ghe.example.com/owner/repo/releases", "ghe.example.com", "owner/repo", false},
+		{"GHE.Example.com/owner/repo", "ghe.example.com", "owner/repo", false},
+		{"https://GHE.Example.com/owner/repo.git", "ghe.example.com", "owner/repo", false},
+		{"owner/repo.git", "", "owner/repo", false},
+		{"owner/repo/extra", "", "", true},
+		{"owner/../repo", "", "", true},
+		{"owner/..", "", "", true},
+		{"owner/repo?x=1", "", "", true},
+		{"owner/repo#frag", "", "", true},
+		{"-owner/repo", "", "", true},
+		{"https://ghe.example.com/owner/..", "", "", true},
 		{"ghe.example.com/owner", "", "", true},
 		{"repo", "", "", true},
 		{"https://ghe.example.com/owner", "", "", true},

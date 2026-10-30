@@ -91,3 +91,35 @@ func TestUnixFSService_InstallBinary_DoesNotClobberRegularFile(t *testing.T) {
 		t.Errorf("regular file was modified: %q", b)
 	}
 }
+
+func TestUnixFSService_InstallBinary_LeavesNoTempLinkAndKeepsOldOnFailure(t *testing.T) {
+	binDir := t.TempDir()
+	svc := NewUnixFSService()
+	if err := svc.InstallBinary(binDir, "tool", "/old/target"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.InstallBinary(binDir, "tool", "/new/target"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.Readlink(filepath.Join(binDir, "tool")); got != "/new/target" {
+		t.Errorf("link target = %q, want /new/target", got)
+	}
+	entries, _ := os.ReadDir(binDir)
+	if len(entries) != 1 {
+		t.Errorf("expected only the final link in binDir, got %d entries", len(entries))
+	}
+}
+
+func TestUnixFSService_InstallBinary_RemovesStaleTempLinks(t *testing.T) {
+	binDir := t.TempDir()
+	stale := filepath.Join(binDir, "tool.tmp-99999")
+	if err := os.Symlink("/gone", stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewUnixFSService().InstallBinary(binDir, "tool", "/new/target"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale temp link was not removed: %v", err)
+	}
+}

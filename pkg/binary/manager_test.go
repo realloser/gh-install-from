@@ -362,3 +362,47 @@ func TestManager_UpdatePinsInstalledHost(t *testing.T) {
 		}
 	}
 }
+
+func TestManager_InstallRefusesNameCollision(t *testing.T) {
+	log.Init(false)
+	rel := func() *github.Release {
+		return &github.Release{
+			TagName: "v1.0.0",
+			Assets: []github.Asset{{
+				Name:               fmt.Sprintf("tool_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH),
+				BrowserDownloadURL: "https://example.com/tool",
+			}},
+		}
+	}
+	mc := &mockClient{host: "ghe.example.com", latestRelease: rel()}
+	manager := setupManagerForTest(t, mc)
+
+	if err := manager.Install("https://ghe.example.com/test/tool"); err != nil {
+		t.Fatalf("first Install: %v", err)
+	}
+
+	// Same name, different owner: must be refused and leave the original intact.
+	if err := manager.Install("https://ghe.example.com/other/tool"); err == nil {
+		t.Fatal("expected collision error for a different owner, got nil")
+	}
+	// Same owner/repo on a different host: also refused.
+	mc.host = "github.com"
+	if err := manager.Install("https://github.com/test/tool"); err == nil {
+		t.Fatal("expected collision error for a different host, got nil")
+	}
+	installed, err := manager.ListInstalled()
+	if err != nil || len(installed) != 1 || installed[0].Repository != "test/tool" || installed[0].Host != "ghe.example.com" {
+		t.Fatalf("original install was disturbed: %v, %v", installed, err)
+	}
+
+	// Reinstalling the same repo on the same host is still fine, regardless of
+	// the case the user types (GitHub names are case-insensitive).
+	mc.host = "GHE.Example.com"
+	if err := manager.Install("https://GHE.Example.com/Test/Tool"); err != nil {
+		t.Fatalf("mixed-case reinstall: %v", err)
+	}
+	mc.host = "ghe.example.com"
+	if err := manager.Install("https://ghe.example.com/test/tool"); err != nil {
+		t.Fatalf("reinstall of same repo: %v", err)
+	}
+}

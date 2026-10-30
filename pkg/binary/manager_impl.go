@@ -82,6 +82,14 @@ func ConfigureQuarantine(m Manager, c Confirmer, remove bool) Manager {
 }
 
 func (m *managerImpl) Install(repo string) error {
+	// Fail fast, before any network call, when the argument already names the
+	// host. For a bare owner/repo the host is only known after resolution, so
+	// the check is repeated below.
+	if argHost, _, perr := github.ParseRepoArg(repo); perr == nil && argHost != "" {
+		if err := m.checkNameCollision(repo, argHost); err != nil {
+			return err
+		}
+	}
 	slog.Info("fetching latest release", "repo", repo)
 	release, err := m.client.GetLatestRelease(repo)
 	if err != nil {
@@ -89,6 +97,12 @@ func (m *managerImpl) Install(repo string) error {
 	}
 	if len(release.Assets) == 0 {
 		return fmt.Errorf("repository %s has no assets in its latest release\n\nThis may be a source-only release. Check the release page for downloadable binaries", repo)
+	}
+
+	// Refuse to take over a command name that belongs to a different repo or
+	// host: a same-named binary would silently replace it (and its metadata).
+	if err := m.checkNameCollision(repo, m.client.GetHost()); err != nil {
+		return err
 	}
 
 	asset, err := findMatchingAsset(release.Assets)
@@ -398,10 +412,10 @@ func (m *managerImpl) findMeta(nameOrRepo string) (*metadata.BinaryMetadata, err
 	// host/owner/repo) for the binary's own host.
 	refHost, refRepo, refErr := github.ParseRepoArg(nameOrRepo)
 	for _, meta := range metaList {
-		if meta.Repository == nameOrRepo {
+		if strings.EqualFold(meta.Repository, nameOrRepo) {
 			return meta, nil
 		}
-		if refErr == nil && refRepo == meta.Repository && (refHost == "" || refHost == meta.GHHost) {
+		if refErr == nil && strings.EqualFold(refRepo, meta.Repository) && (refHost == "" || strings.EqualFold(refHost, meta.GHHost)) {
 			return meta, nil
 		}
 		binaryName := filepath.Base(meta.BinaryPath)
@@ -547,6 +561,32 @@ func copyFile(src, dst string) error {
 
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return err
+	}
+	return nil
+}
+
+// checkNameCollision fails when the binary name derived from repo is already
+// installed from a different owner/repo or host. Reinstalling or updating the
+// same repo on the same host is allowed.
+func (m *managerImpl) checkNameCollision(repo, host string) error {
+	_, ownerRepo, err := github.ParseRepoArg(repo)
+	if err != nil {
+		return nil // reported later with a proper message
+	}
+	name := getBinaryName(ownerRepo)
+	existing, err := m.store.Load(name)
+	if err != nil || existing == nil {
+		return nil
+	}
+	// GitHub treats owner, repo and host names case-insensitively.
+	sameRepo := strings.EqualFold(existing.Repository, ownerRepo)
+	sameHost := existing.GHHost == "" || host == "" || strings.EqualFold(existing.GHHost, host)
+	if !sameRepo || !sameHost {
+		from := existing.Repository
+		if existing.GHHost != "" {
+			from += " on " + existing.GHHost
+		}
+		return fmt.Errorf("binary name %q is already installed from %s; remove it first with 'gh install-from remove %s'", name, from, name)
 	}
 	return nil
 }

@@ -40,15 +40,21 @@ func (s *UnixFSService) InstallBinary(binDir, binaryName, targetPath string) err
 		return fmt.Errorf("failed to create bin directory: %w", err)
 	}
 	linkPath := filepath.Join(binDir, binaryName)
-	// Replace our own symlink from a previous install/update; os.Symlink fails
-	// with "file exists" otherwise. Never clobber anything that is not a symlink.
-	if fi, err := os.Lstat(linkPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		if err := os.Remove(linkPath); err != nil {
-			return fmt.Errorf("failed to replace existing symlink %s: %w", linkPath, err)
-		}
+	// Never clobber anything that is not a symlink (e.g. a user's own binary).
+	if fi, err := os.Lstat(linkPath); err == nil && fi.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("refusing to replace %s: it exists and is not a symlink", linkPath)
 	}
-	if err := os.Symlink(targetPath, linkPath); err != nil {
+	// Build the new link beside the old one and rename it into place. rename(2)
+	// swaps atomically, so the command never disappears mid-update and a failed
+	// attempt leaves the previous version untouched.
+	removeStaleTempLinks(linkPath)
+	tmpLink := fmt.Sprintf("%s.tmp-%d", linkPath, os.Getpid())
+	if err := os.Symlink(targetPath, tmpLink); err != nil {
 		return fmt.Errorf("failed to create symlink %s -> %s: %w", linkPath, targetPath, err)
+	}
+	if err := os.Rename(tmpLink, linkPath); err != nil {
+		_ = os.Remove(tmpLink)
+		return fmt.Errorf("failed to replace symlink %s: %w", linkPath, err)
 	}
 	slog.Debug("symlink created", "link", linkPath, "target", targetPath)
 	return nil
@@ -65,4 +71,19 @@ func (s *UnixFSService) RemoveBinary(binDir, binaryName string) error {
 	}
 	slog.Debug("symlink removed", "link", linkPath)
 	return nil
+}
+
+// removeStaleTempLinks deletes "<link>.tmp-<pid>" symlinks left behind by an
+// install that was killed between creating the temporary link and renaming it.
+// Only symlinks are removed.
+func removeStaleTempLinks(linkPath string) {
+	matches, err := filepath.Glob(linkPath + ".tmp-*")
+	if err != nil {
+		return
+	}
+	for _, m := range matches {
+		if fi, err := os.Lstat(m); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			_ = os.Remove(m)
+		}
+	}
 }
